@@ -116,7 +116,7 @@ export default function Home() {
       <h1 style={{ textAlign: "center", marginBottom: 20, color: "indigo",   WebkitTextStroke: "0.5px white",
     textShadow: "0 0 10px rgba(255,255,255,0.3)",
     fontWeight: "bold",}}>
-        🎛 S U N V O X    |      C O A C H
+        🎛 S U N V O X|C O A C H
       </h1>
 
       <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
