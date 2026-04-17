@@ -28,7 +28,47 @@ export async function POST(req) {
     const lastUserMessage =
       [...messages].reverse().find((m) => m?.role === "user" && typeof m?.content === "string")
         ?.content || "";
+const goToLessonMatch = lower.match(/lesson\s*(\d+)/);
 
+if (
+  lower.includes("go to lesson") ||
+  lower.includes("jump to lesson") ||
+  lower.includes("move to lesson")
+) {
+  if (goToLessonMatch) {
+    const targetLesson = parseInt(goToLessonMatch[1]);
+
+    if (!isNaN(targetLesson)) {
+      let progress = global.progress || {
+        currentLesson: 1,
+        completedLessons: [],
+        weaknesses: [],
+        strengths: [],
+        reflections: [],
+      };
+
+      progress.currentLesson = targetLesson;
+
+      // Optional: mark previous lessons as completed
+      progress.completedLessons = Array.from(
+        new Set([
+          ...progress.completedLessons,
+          ...Array.from({ length: targetLesson }, (_, i) => i + 1),
+        ])
+      );
+
+      global.progress = progress;
+
+      return Response.json({
+        reply: `Moved you to lesson ${targetLesson}. You can continue from there.`,
+      });
+    }
+  }
+
+  return Response.json({
+    reply: "Tell me which lesson number you want to move to.",
+  });
+}
     const lower = lastUserMessage.toLowerCase();
 
     const wantsComposition =
