@@ -11,22 +11,21 @@ export default function Home() {
   const [reflection, setReflection] = useState("");
   const [struggledWith, setStruggledWith] = useState("");
   const [loading, setLoading] = useState(false);
-  const [currentLessonId, setCurrentLessonId] = useState(null);
 
   const chatEndRef = useRef(null);
 
-  // auto-scroll
+  // 🔥 auto-scroll
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // load chat
+  // 🔥 load chat from localStorage
   useEffect(() => {
     const saved = localStorage.getItem("messages");
     if (saved) setMessages(JSON.parse(saved));
   }, []);
 
-  // save chat
+  // 🔥 save chat
   useEffect(() => {
     localStorage.setItem("messages", JSON.stringify(messages));
   }, [messages]);
@@ -52,11 +51,8 @@ export default function Home() {
 
       const data = await res.json();
 
-      setCurrentLessonId(data.lessonId);
-
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", content: "--- NEW LESSON ---" },
         { role: "assistant", content: data.lessonText },
       ]);
 
@@ -89,14 +85,11 @@ export default function Home() {
     });
 
     const data = await res.json();
-
     setLesson(data);
-    setCurrentLessonId(data.lessonId);
 
     if (data.lessonText) {
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", content: "--- NEW LESSON ---" },
         { role: "assistant", content: data.lessonText },
       ]);
     }
@@ -149,7 +142,7 @@ export default function Home() {
       <h1
         style={{
           textAlign: "center",
-          marginBottom: 10,
+          marginBottom: 20,
           color: "indigo",
           WebkitTextStroke: "0.5px white",
           textShadow: "0 0 10px rgba(255,255,255,0.3)",
@@ -159,16 +152,9 @@ export default function Home() {
         🎛 S U N V O X | C O A C H
       </h1>
 
-      {currentLessonId && (
-        <p style={{ textAlign: "center", color: "#aaa", marginBottom: 10 }}>
-          Lesson #{currentLessonId}
-        </p>
-      )}
-
       <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
         <button
           onClick={getLesson}
-          disabled={loading}
           style={{
             padding: "12px 16px",
             borderRadius: 10,
@@ -177,7 +163,6 @@ export default function Home() {
             color: "white",
             cursor: "pointer",
             fontWeight: "bold",
-            opacity: loading ? 0.6 : 1,
           }}
         >
           Get Today’s Lesson
@@ -211,7 +196,9 @@ export default function Home() {
         }}
       >
         {messages.length === 0 && (
-          <p style={{ color: "#ddd" }}>Start your training session</p>
+          <p style={{ color: "#ddd" }}>
+            Click <strong>Get Today’s Lesson</strong> or ask a question.
+          </p>
         )}
 
         {messages.map((m, i) => (
@@ -241,6 +228,7 @@ export default function Home() {
           </div>
         ))}
 
+        {/* 🔥 auto-scroll anchor */}
         <div ref={chatEndRef} />
       </div>
 
@@ -316,63 +304,44 @@ export default function Home() {
               ✖ I need more work
             </button>
           </div>
-
-          <button
-            onClick={getLesson}
-            style={{
-              marginTop: 16,
-              width: "100%",
-              padding: "12px",
-              borderRadius: 10,
-              border: "none",
-              background: "#0070f3",
-              color: "#fff",
-              fontWeight: "bold",
-              cursor: "pointer",
-            }}
-          >
-            Next Lesson
-          </button>
         </div>
       )}
 
-      {!lesson && (
-        <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
-          <input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") sendMessage();
-            }}
-            placeholder="Ask a question..."
-            style={{
-              flex: 1,
-              padding: 12,
-              borderRadius: 10,
-              border: "1px solid #333",
-              background: "#111",
-              color: "#fff",
-            }}
-          />
+      <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+        <input
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") sendMessage();
+          }}
+          placeholder="Ask a question..."
+          style={{
+            flex: 1,
+            padding: 12,
+            borderRadius: 10,
+            border: "1px solid #333",
+            background: "#111",
+            color: "#fff",
+          }}
+        />
 
-          <button
-            onClick={sendMessage}
-            disabled={loading}
-            style={{
-              padding: "12px 16px",
-              borderRadius: 10,
-              border: "none",
-              background: "#0070f3",
-              color: "white",
-              cursor: "pointer",
-              fontWeight: "bold",
-              opacity: loading ? 0.6 : 1,
-            }}
-          >
-            {loading ? "..." : "Send"}
-          </button>
-        </div>
-      )}
+        <button
+          onClick={sendMessage}
+          disabled={loading}
+          style={{
+            padding: "12px 16px",
+            borderRadius: 10,
+            border: "none",
+            background: "#0070f3",
+            color: "white",
+            cursor: "pointer",
+            fontWeight: "bold",
+            opacity: loading ? 0.6 : 1,
+          }}
+        >
+          {loading ? "..." : "Send"}
+        </button>
+      </div>
     </main>
   );
 }
