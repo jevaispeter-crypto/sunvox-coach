@@ -28,6 +28,9 @@ export default function RhythmTrainer() {
   const countdownRef = useRef(null);
   const lastStepRef = useRef(-1);
 
+  // ✅ NEW: FIX SCORE DELAY
+  const resultsRef = useRef([]);
+
   const isTouchDevice =
     typeof window !== "undefined" &&
     (window.matchMedia?.("(pointer: coarse)")?.matches ||
@@ -84,8 +87,12 @@ export default function RhythmTrainer() {
   const start = () => {
     clearTimers();
 
+    const newResults = new Array(TOTAL_STEPS).fill(null);
+
     setSequence(generatePattern());
-    setResults(new Array(TOTAL_STEPS).fill(null));
+    setResults(newResults);
+    resultsRef.current = newResults; // ✅ sync ref
+
     setTiming(new Array(TOTAL_STEPS).fill(null));
     setScore(0);
     setCombo(0);
@@ -161,6 +168,7 @@ export default function RhythmTrainer() {
     setResults((prev) => {
       const updated = [...prev];
       updated[stepIndex] = correct;
+      resultsRef.current = updated; // ✅ keep ref in sync
       return updated;
     });
 
@@ -188,7 +196,7 @@ export default function RhythmTrainer() {
 
     for (let i = 0; i < TOTAL_STEPS; i++) {
       const expected = sequence[i];
-      const result = results[i];
+      const result = resultsRef.current[i]; // ✅ FIX HERE
 
       if (expected === null) {
         if (result === null) correctCount++;
@@ -288,7 +296,6 @@ export default function RhythmTrainer() {
             })}
           </div>
 
-          {/* ✅ Pads restored */}
           <div
             style={{
               marginTop: 20,
