@@ -26,50 +26,55 @@ export async function POST(req) {
     global.progress = progress;
 
     const lastUserMessage =
-      [...messages].reverse().find((m) => m?.role === "user" && typeof m?.content === "string")
+      [...messages]
+        .reverse()
+        .find((m) => m?.role === "user" && typeof m?.content === "string")
         ?.content || "";
-const goToLessonMatch = lower.match(/lesson\s*(\d+)/);
 
-if (
-  lower.includes("go to lesson") ||
-  lower.includes("jump to lesson") ||
-  lower.includes("move to lesson")
-) {
-  if (goToLessonMatch) {
-    const targetLesson = parseInt(goToLessonMatch[1]);
+    const lower = lastUserMessage.toLowerCase();
 
-    if (!isNaN(targetLesson)) {
-      let progress = global.progress || {
-        currentLesson: 1,
-        completedLessons: [],
-        weaknesses: [],
-        strengths: [],
-        reflections: [],
-      };
+    // =========================
+    // 🔥 COMMAND: GO TO LESSON
+    // =========================
 
-      progress.currentLesson = targetLesson;
+    const goToLessonMatch = lower.match(/lesson\s*(\d+)/);
 
-      // Optional: mark previous lessons as completed
-      progress.completedLessons = Array.from(
-        new Set([
-          ...progress.completedLessons,
-          ...Array.from({ length: targetLesson }, (_, i) => i + 1),
-        ])
-      );
+    if (
+      lower.includes("go to lesson") ||
+      lower.includes("jump to lesson") ||
+      lower.includes("move to lesson")
+    ) {
+      if (goToLessonMatch) {
+        const targetLesson = parseInt(goToLessonMatch[1]);
 
-      global.progress = progress;
+        if (!isNaN(targetLesson)) {
+          progress.currentLesson = targetLesson;
+
+          progress.completedLessons = progress.completedLessons || [];
+
+          // ✅ SAFE loop (no Array.from bug)
+          for (let j = 1; j <= targetLesson; j++) {
+            if (!progress.completedLessons.includes(j)) {
+              progress.completedLessons.push(j);
+            }
+          }
+
+          global.progress = progress;
+
+          return Response.json({
+            reply: `Moved you to lesson ${targetLesson}. You can continue from there.`,
+          });
+        }
+      }
 
       return Response.json({
-        reply: `Moved you to lesson ${targetLesson}. You can continue from there.`,
+        reply: "Tell me which lesson number you want to move to.",
       });
     }
-  }
 
-  return Response.json({
-    reply: "Tell me which lesson number you want to move to.",
-  });
-}
-    const lower = lastUserMessage.toLowerCase();
+    // =========================
+    // 🧠 MODE DETECTION
+    // =========================
 
     const wantsComposition =
       lower.includes("full composition") ||
@@ -102,98 +107,51 @@ if (
     const wantsExpertMode =
       wantsComposition || wantsDeepDive || wantsSunVoxSpecificOutput;
 
+    // =========================
+    // 🧠 SYSTEM PROMPT
+    // =========================
+
     const systemPrompt = `
 You are a highly capable music production coach focused on SunVox, tracker workflow, rhythm, arrangement, composition, and practical music theory.
 
 You are helping ONE student over time.
-You should be accurate, concrete, and musically credible.
-Do not behave like a generic motivational tutor.
 
 GENERAL BEHAVIOR:
-- Be direct, practical, and expert-level.
-- Prioritize correctness and usefulness over friendliness.
-- When the user asks a casual question, answer clearly and efficiently.
-- When the user asks for depth, go deep.
-- When the user asks for a composition, generate something directly usable.
-- Always keep SunVox / tracker workflow in mind when relevant.
-
-IMPORTANT:
-- Do NOT invent unavailable instruments or modules unless you explicitly say they are examples.
-- Respect the user's exact requested instruments or constraints.
-- Do NOT silently swap requested instruments.
-- Do NOT give vague “put this on the beat” advice when a precise pattern is more useful.
-- Prefer concrete structure over abstract explanation.
+- Be direct, practical, and expert-level
+- Prioritize correctness over fluff
+- Respect exact user constraints (DO NOT swap instruments)
 
 STANDARD MODE:
-Use this when the user is asking for ordinary help, clarification, or coaching.
-- Keep answers concise but not shallow.
-- Explain simply.
-- If relevant, give one practical next step.
+- Clear, concise explanations
+- One actionable step when relevant
 
 EXPERT MODE:
-Use this when the user asks for:
-- a full composition
-- a pattern
-- arrangement help
-- deep explanation
-- advanced theory application
-- specific SunVox implementation
+- Deep, structured, and precise
+- Output must be directly usable in SunVox
+- Use pattern grids or tracker rows
+- Explain WHY it works musically
 
-In EXPERT MODE:
-- Be significantly more detailed.
-- Use SunVox-native/tracker-native formatting.
-- Give exact structure.
-- Make output directly usable.
-- Prefer 16-step, 32-line, or tracker-row logic.
-- Explain WHY choices work musically.
-- Include one variation or extension when helpful.
-
-WHEN EXPLAINING MUSIC CONCEPTS:
-- Explain the concept clearly.
-- Then show how it sounds / functions musically.
-- Then show how to implement it in SunVox.
-- If helpful, include a small pattern or progression.
-
-WHEN USER ASKS FOR A COMPOSITION OR PATTERN:
-You MUST format output in a tracker-friendly way.
-
-Preferred format:
-1. Title / intent
-2. Tempo + length
-3. Instruments actually used
-4. Pattern grid or row layout
-5. Short explanation
-6. One variation or next step
-
-For drum / percussion patterns, prefer formats like:
+WHEN USER ASKS FOR A COMPOSITION:
+- ALWAYS provide a pattern
+- ALWAYS respect requested instruments
+- Use this format:
 
 Pattern: 16 steps
 HH: x x x x x x x x x x x x x x x x
 SN: . . . . x . . . . . . . x . . .
 CB: . x . . . x . . . x . . . x . .
 
-or tracker-friendly row notation like:
+OR tracker rows:
 
-Rows 00-15
+Rows 00–15
 00: HH + CB
 01: HH
-02: HH
-03: HH + SN
 ...
 
-Use "." for rests and be consistent.
-
-WHEN MATCHING SUNVOX:
-- Think in patterns, rows, steps, repetition, variation, module layering.
-- If using line numbers, keep them consistent.
-- If using 16-step notation, keep it clean and readable.
-- If using 32-line notation, make sure it maps to a realistic tracker pattern.
-- Avoid DAW-agnostic fluff.
+- Keep it clean and readable
 
 QUALITY BAR:
-- The answer should feel like it came from a strong niche mentor, not a general chatbot.
-- If the user asks something broad, structure the response.
-- If the user asks something narrow, answer precisely.
+- Output must feel like a real producer, not a generic tutor
 `;
 
     const userContext = `
@@ -206,7 +164,7 @@ ${JSON.stringify(progress, null, 2)}
 Mode:
 ${wantsExpertMode ? "EXPERT MODE" : "STANDARD MODE"}
 
-Latest user request:
+Latest request:
 ${lastUserMessage}
 `;
 

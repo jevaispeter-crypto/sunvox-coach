@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import RhythmTrainer from "@/components/RhythmTrainer";
 
 export default function Home() {
   const [messages, setMessages] = useState([]);
@@ -455,3 +456,5 @@ export default function Home() {
     </main>
   );
 }
+
+<RhythmTrainer />
