@@ -11,123 +11,149 @@ export default function Home() {
   const [reflection, setReflection] = useState("");
   const [struggledWith, setStruggledWith] = useState("");
   const [loading, setLoading] = useState(false);
+  const [currentLessonId, setCurrentLessonId] = useState(null);
 
   const chatEndRef = useRef(null);
 
-  // 🔥 auto-scroll
+  const appendMessage = (role, content) => {
+    if (typeof content !== "string" || !content.trim()) return;
+    setMessages((prev) => [...prev, { role, content }]);
+  };
+
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // 🔥 load chat from localStorage
   useEffect(() => {
-    const saved = localStorage.getItem("messages");
-    if (saved) setMessages(JSON.parse(saved));
+    try {
+      const saved = localStorage.getItem("messages");
+      if (!saved) return;
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) {
+        const cleaned = parsed.filter(
+          (m) =>
+            m &&
+            (m.role === "user" || m.role === "assistant") &&
+            typeof m.content === "string"
+        );
+        setMessages(cleaned);
+      }
+    } catch {
+      localStorage.removeItem("messages");
+    }
   }, []);
 
-  // 🔥 save chat
   useEffect(() => {
     localStorage.setItem("messages", JSON.stringify(messages));
   }, [messages]);
 
   const sendMessage = async () => {
-    if (!input.trim()) return;
+    if (loading) return;
+    if (typeof input !== "string" || !input.trim()) return;
 
-    const userInput = input.toLowerCase();
+    const trimmed = input.trim();
+    const newMessages = [...messages, { role: "user", content: trimmed }];
+
+    setMessages(newMessages);
+    setInput("");
     setLoading(true);
 
-    const isLessonRequest =
-      userInput.includes("lesson") ||
-      userInput.includes("start") ||
-      userInput.includes("ready") ||
-      userInput.includes("practice");
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ messages: newMessages }),
+      });
 
-    setInput("");
+      const data = await res.json();
 
-    if (isLessonRequest) {
+      if (!res.ok) {
+        appendMessage("assistant", `Error: ${data.error || "Request failed"}`);
+        return;
+      }
+
+      appendMessage("assistant", data.reply || "No reply received.");
+    } catch (error) {
+      appendMessage("assistant", `Error: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getLesson = async () => {
+    if (loading) return;
+    setLoading(true);
+
+    try {
       const res = await fetch("/api/lesson", {
         method: "POST",
       });
 
       const data = await res.json();
 
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: data.lessonText },
-      ]);
+      if (!res.ok) {
+        appendMessage("assistant", `Error: ${data.error || "Lesson failed"}`);
+        return;
+      }
 
+      setLesson(data);
+      setCurrentLessonId(data.lessonId ?? null);
+
+      appendMessage("assistant", "--- NEW LESSON ---");
+      appendMessage("assistant", data.lessonText || "No lesson returned.");
+    } catch (error) {
+      appendMessage("assistant", `Error: ${error.message}`);
+    } finally {
       setLoading(false);
-      return;
     }
-
-    const newMessages = [...messages, { role: "user", content: input }];
-    setMessages(newMessages);
-
-    const res = await fetch("/api/chat", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ messages: newMessages }),
-    });
-
-    const data = await res.json();
-
-    setMessages([...newMessages, { role: "assistant", content: data.reply }]);
-    setLoading(false);
-  };
-
-  const getLesson = async () => {
-    setLoading(true);
-
-    const res = await fetch("/api/lesson", {
-      method: "POST",
-    });
-
-    const data = await res.json();
-    setLesson(data);
-
-    if (data.lessonText) {
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: data.lessonText },
-      ]);
-    }
-
-    setLoading(false);
   };
 
   const completeLesson = async (feltEasy) => {
-    if (!lesson) return;
+    if (!lesson || loading) return;
+    setLoading(true);
 
-    const res = await fetch("/api/complete", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        lessonId: lesson.lessonId,
-        reflection,
-        feltEasy,
-        struggledWith,
-      }),
-    });
+    try {
+      const res = await fetch("/api/complete", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          lessonId: lesson.lessonId,
+          reflection,
+          feltEasy,
+          struggledWith,
+        }),
+      });
 
-    const data = await res.json();
+      const data = await res.json();
 
-    setMessages((prev) => [
-      ...prev,
-      {
-        role: "assistant",
-        content: data.ok
-          ? `Lesson saved. Next lesson is #${data.nextLesson}.`
-          : `Error: ${data.error}`,
-      },
-    ]);
+      if (!res.ok) {
+        appendMessage("assistant", `Error: ${data.error || "Completion failed"}`);
+        return;
+      }
 
-    setReflection("");
-    setStruggledWith("");
-    setLesson(null);
+      appendMessage(
+        "assistant",
+        `Lesson saved. Next lesson is #${data.nextLesson}.`
+      );
+
+      setCurrentLessonId(data.nextLesson ?? currentLessonId);
+      setReflection("");
+      setStruggledWith("");
+      setLesson(null);
+    } catch (error) {
+      appendMessage("assistant", `Error: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const clearChat = () => {
+    setMessages([]);
+    localStorage.removeItem("messages");
   };
 
   return (
@@ -142,8 +168,8 @@ export default function Home() {
       <h1
         style={{
           textAlign: "center",
-          marginBottom: 20,
-          color: "indigo",
+          marginBottom: 10,
+          color: "#000",
           WebkitTextStroke: "0.5px white",
           textShadow: "0 0 10px rgba(255,255,255,0.3)",
           fontWeight: "bold",
@@ -152,31 +178,41 @@ export default function Home() {
         🎛 S U N V O X | C O A C H
       </h1>
 
+      {currentLessonId && (
+        <p style={{ textAlign: "center", color: "#aaa", marginBottom: 14 }}>
+          Lesson #{currentLessonId}
+        </p>
+      )}
+
       <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
         <button
           onClick={getLesson}
+          disabled={loading}
           style={{
             padding: "12px 16px",
             borderRadius: 10,
             border: "none",
             background: "#0070f3",
             color: "white",
-            cursor: "pointer",
+            cursor: loading ? "default" : "pointer",
             fontWeight: "bold",
+            opacity: loading ? 0.6 : 1,
           }}
         >
-          Get Today’s Lesson
+          {loading ? "Loading..." : "Get Today’s Lesson"}
         </button>
 
         <button
-          onClick={() => setMessages([])}
+          onClick={clearChat}
+          disabled={loading}
           style={{
             padding: "12px 16px",
             borderRadius: 10,
             border: "none",
             background: "#444",
             color: "white",
-            cursor: "pointer",
+            cursor: loading ? "default" : "pointer",
+            opacity: loading ? 0.6 : 1,
           }}
         >
           Clear Chat
@@ -196,8 +232,8 @@ export default function Home() {
         }}
       >
         {messages.length === 0 && (
-          <p style={{ color: "#ddd" }}>
-            Click <strong>Get Today’s Lesson</strong> or ask a question.
+          <p style={{ color: "#ddd", lineHeight: 1.6 }}>
+            Start your training session.
           </p>
         )}
 
@@ -219,16 +255,69 @@ export default function Home() {
               marginLeft: m.role === "user" ? "auto" : "0",
               marginRight: m.role === "user" ? "0" : "auto",
               boxShadow: "0 10px 30px rgba(0,0,0,0.5)",
+              whiteSpace: "normal",
+              overflowWrap: "break-word",
             }}
           >
             <strong>{m.role === "user" ? "You" : "Coach"}:</strong>
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-              {m.content}
-            </ReactMarkdown>
+            <div style={{ marginTop: 8 }}>
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                components={{
+                  h1: ({ node, ...props }) => (
+                    <h1 style={{ fontSize: "24px", margin: "10px 0" }} {...props} />
+                  ),
+                  h2: ({ node, ...props }) => (
+                    <h2 style={{ fontSize: "18px", margin: "10px 0 6px" }} {...props} />
+                  ),
+                  h3: ({ node, ...props }) => (
+                    <h3 style={{ fontSize: "16px", margin: "10px 0 6px" }} {...props} />
+                  ),
+                  p: ({ node, ...props }) => (
+                    <p style={{ marginBottom: 10, lineHeight: 1.6 }} {...props} />
+                  ),
+                  li: ({ node, ...props }) => (
+                    <li style={{ marginBottom: 4, lineHeight: 1.5 }} {...props} />
+                  ),
+                  ul: ({ node, ...props }) => (
+                    <ul style={{ paddingLeft: 22, marginBottom: 10 }} {...props} />
+                  ),
+                  ol: ({ node, ...props }) => (
+                    <ol style={{ paddingLeft: 22, marginBottom: 10 }} {...props} />
+                  ),
+                  hr: () => (
+                    <hr style={{ border: "none", borderTop: "1px solid #333", margin: "12px 0" }} />
+                  ),
+                  code: ({ node, inline, ...props }) =>
+                    inline ? (
+                      <code
+                        style={{
+                          background: "#111",
+                          padding: "2px 6px",
+                          borderRadius: 6,
+                        }}
+                        {...props}
+                      />
+                    ) : (
+                      <code
+                        style={{
+                          display: "block",
+                          background: "#111",
+                          padding: 12,
+                          borderRadius: 10,
+                          overflowX: "auto",
+                        }}
+                        {...props}
+                      />
+                    ),
+                }}
+              >
+                {m.content}
+              </ReactMarkdown>
+            </div>
           </div>
         ))}
 
-        {/* 🔥 auto-scroll anchor */}
         <div ref={chatEndRef} />
       </div>
 
@@ -244,6 +333,9 @@ export default function Home() {
         >
           <h2 style={{ marginBottom: 16 }}>After the lesson</h2>
 
+          <label style={{ display: "block", marginBottom: 6, color: "#aaa" }}>
+            What felt clear? What felt difficult?
+          </label>
           <textarea
             value={reflection}
             onChange={(e) => setReflection(e.target.value)}
@@ -256,9 +348,15 @@ export default function Home() {
               background: "#111",
               color: "#fff",
               marginBottom: 16,
+              resize: "vertical",
+              lineHeight: 1.5,
             }}
+            placeholder="e.g. I could feel the pulse, but the shift was confusing"
           />
 
+          <label style={{ display: "block", marginBottom: 6, color: "#aaa" }}>
+            What did you struggle with most?
+          </label>
           <input
             value={struggledWith}
             onChange={(e) => setStruggledWith(e.target.value)}
@@ -271,11 +369,13 @@ export default function Home() {
               color: "#fff",
               marginBottom: 20,
             }}
+            placeholder="e.g. timing, groove, hearing differences"
           />
 
           <div style={{ display: "flex", gap: 12 }}>
             <button
               onClick={() => completeLesson(true)}
+              disabled={loading}
               style={{
                 flex: 1,
                 padding: "12px 16px",
@@ -284,6 +384,8 @@ export default function Home() {
                 background: "#2ecc71",
                 color: "#000",
                 fontWeight: "bold",
+                cursor: loading ? "default" : "pointer",
+                opacity: loading ? 0.6 : 1,
               }}
             >
               ✔ This felt manageable
@@ -291,6 +393,7 @@ export default function Home() {
 
             <button
               onClick={() => completeLesson(false)}
+              disabled={loading}
               style={{
                 flex: 1,
                 padding: "12px 16px",
@@ -299,6 +402,8 @@ export default function Home() {
                 background: "#e74c3c",
                 color: "#fff",
                 fontWeight: "bold",
+                cursor: loading ? "default" : "pointer",
+                opacity: loading ? 0.6 : 1,
               }}
             >
               ✖ I need more work
@@ -307,41 +412,43 @@ export default function Home() {
         </div>
       )}
 
-      <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
-        <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") sendMessage();
-          }}
-          placeholder="Ask a question..."
-          style={{
-            flex: 1,
-            padding: 12,
-            borderRadius: 10,
-            border: "1px solid #333",
-            background: "#111",
-            color: "#fff",
-          }}
-        />
+      {!lesson && (
+        <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+          <input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") sendMessage();
+            }}
+            placeholder="Ask a question..."
+            style={{
+              flex: 1,
+              padding: 12,
+              borderRadius: 10,
+              border: "1px solid #333",
+              background: "#111",
+              color: "#fff",
+            }}
+          />
 
-        <button
-          onClick={sendMessage}
-          disabled={loading}
-          style={{
-            padding: "12px 16px",
-            borderRadius: 10,
-            border: "none",
-            background: "#0070f3",
-            color: "white",
-            cursor: "pointer",
-            fontWeight: "bold",
-            opacity: loading ? 0.6 : 1,
-          }}
-        >
-          {loading ? "..." : "Send"}
-        </button>
-      </div>
+          <button
+            onClick={sendMessage}
+            disabled={loading}
+            style={{
+              padding: "12px 16px",
+              borderRadius: 10,
+              border: "none",
+              background: "#0070f3",
+              color: "white",
+              cursor: loading ? "default" : "pointer",
+              fontWeight: "bold",
+              opacity: loading ? 0.6 : 1,
+            }}
+          >
+            {loading ? "..." : "Send"}
+          </button>
+        </div>
+      )}
     </main>
   );
 }
