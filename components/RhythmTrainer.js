@@ -3,60 +3,48 @@
 import { useEffect, useRef, useState } from "react";
 
 export default function RhythmTrainer() {
-  const bpm = 90;
+  const [bpm, setBpm] = useState(90);
   const beatMs = (60 / bpm) * 1000;
-  const hitWindow = 150;
+  const hitWindow = 180;
 
   const [sequence, setSequence] = useState([]);
   const [phase, setPhase] = useState("idle");
   const [countdown, setCountdown] = useState(3);
-  const [currentStep, setCurrentStep] = useState(0);
-  const [results, setResults] = useState([]);
   const [score, setScore] = useState(0);
+  const [hits, setHits] = useState({});
   const [difficulty, setDifficulty] = useState(1);
 
   const startTimeRef = useRef(0);
-  const intervalRef = useRef(null);
+  const animationRef = useRef(null);
+  const containerRef = useRef(null);
 
-  // 🎯 RANDOM PATTERN GENERATOR
-  const generatePattern = (difficultyLevel) => {
-    const length = 16; // ~10 seconds
+  const TOTAL_BEATS = 32; // ~20 sec
+  const SCROLL_SPEED = 120; // px/sec
+
+  // 🎯 PATTERN GENERATOR (CONTROLLED RANDOM)
+  const generatePattern = () => {
     let pattern = [];
 
-    for (let i = 0; i < length; i++) {
+    for (let i = 0; i < TOTAL_BEATS; i++) {
       let type = null;
 
-      if (difficultyLevel === 1) {
-        // 🟢 EASY
+      if (difficulty === 1) {
         if (i % 4 === 0) type = "kick";
         if (i % 4 === 2) type = "snare";
-
-        // small variation
-        if (Math.random() < 0.15) {
-          type = Math.random() < 0.5 ? "kick" : "snare";
-        }
+        if (Math.random() < 0.1) type = Math.random() < 0.5 ? "kick" : "snare";
       }
 
-      if (difficultyLevel === 2) {
-        // 🟡 MEDIUM
+      if (difficulty === 2) {
         if (i % 4 === 0) type = "kick";
         if (i % 4 === 2) type = "snare";
-
-        if (Math.random() < 0.4) {
-          type = Math.random() < 0.5 ? "kick" : "snare";
-        }
+        if (Math.random() < 0.4) type = Math.random() < 0.5 ? "kick" : "snare";
       }
 
-      if (difficultyLevel === 3) {
-        // 🔴 HARD
-        if (Math.random() < 0.7) {
-          type = Math.random() < 0.5 ? "kick" : "snare";
-        }
+      if (difficulty === 3) {
+        if (Math.random() < 0.7) type = Math.random() < 0.5 ? "kick" : "snare";
       }
 
-      if (type) {
-        pattern.push({ time: i, type });
-      }
+      if (type) pattern.push({ time: i * beatMs, type, id: i });
     }
 
     return pattern;
@@ -74,11 +62,11 @@ export default function RhythmTrainer() {
 
   // 🚀 START
   const start = () => {
-    const newPattern = generatePattern(difficulty);
-    setSequence(newPattern);
-
-    setResults(new Array(16).fill(null));
+    const p = generatePattern();
+    setSequence(p);
+    setHits({});
     setScore(0);
+
     setPhase("countdown");
     setCountdown(3);
 
@@ -86,6 +74,7 @@ export default function RhythmTrainer() {
     const id = setInterval(() => {
       c--;
       setCountdown(c);
+
       if (c === 0) {
         clearInterval(id);
         begin();
@@ -97,57 +86,73 @@ export default function RhythmTrainer() {
     setPhase("playing");
     startTimeRef.current = performance.now();
 
-    let step = 0;
+    let beat = 0;
 
-    intervalRef.current = setInterval(() => {
-      setCurrentStep(step);
-      click(step % 4 === 0);
-      step++;
-
-      if (step >= 16) {
-        clearInterval(intervalRef.current);
-        finish();
-      }
+    const metro = setInterval(() => {
+      click(beat % 4 === 0);
+      beat++;
+      if (beat >= TOTAL_BEATS) clearInterval(metro);
     }, beatMs);
+
+    animate();
   };
 
-  // 🎯 TAP
+  // 🎯 ANIMATION LOOP (SCROLLING)
+  const animate = () => {
+    const loop = () => {
+      if (phase !== "playing") return;
+
+      const now = performance.now();
+      const elapsed = now - startTimeRef.current;
+
+      if (elapsed > TOTAL_BEATS * beatMs) {
+        finish();
+        return;
+      }
+
+      animationRef.current = requestAnimationFrame(loop);
+    };
+
+    animationRef.current = requestAnimationFrame(loop);
+  };
+
+  // 🎯 TAP (REAL TIME)
   const tap = (type) => {
     if (phase !== "playing") return;
 
     const now = performance.now();
     const elapsed = now - startTimeRef.current;
 
-    const stepIndex = Math.round(elapsed / beatMs);
+    let closest = null;
+    let minDiff = Infinity;
 
-    if (stepIndex < 0 || stepIndex >= 16) return;
-
-    const expected = sequence.find((s) => s.time === stepIndex);
-
-    let correct = false;
-
-    if (expected) {
-      const expectedTime = expected.time * beatMs;
-      const diff = Math.abs(elapsed - expectedTime);
-
-      correct = expected.type === type && diff < hitWindow;
-    }
-
-    setResults((prev) => {
-      const updated = [...prev];
-      updated[stepIndex] = correct;
-      return updated;
+    sequence.forEach((note) => {
+      const diff = Math.abs(elapsed - note.time);
+      if (diff < minDiff) {
+        minDiff = diff;
+        closest = note;
+      }
     });
+
+    if (!closest) return;
+
+    const correct =
+      closest.type === type && minDiff < hitWindow && !hits[closest.id];
+
+    setHits((prev) => ({
+      ...prev,
+      [closest.id]: correct ? "hit" : "miss",
+    }));
   };
 
   // 🏁 SCORE
   const finish = () => {
     setPhase("result");
 
-    const correctHits = results.filter((r) => r === true).length;
-    const totalNotes = sequence.length || 1;
+    const total = sequence.length;
+    const correct = Object.values(hits).filter((h) => h === "hit").length;
 
-    setScore(Math.round((correctHits / totalNotes) * 100));
+    setScore(Math.round((correct / total) * 100));
   };
 
   // ⌨️ INPUT
@@ -159,15 +164,63 @@ export default function RhythmTrainer() {
 
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [phase, sequence]);
+  }, [phase, sequence, hits]);
+
+  // 🎨 RENDER NOTE POSITION
+  const renderNotes = () => {
+    if (!containerRef.current) return null;
+
+    const now = performance.now();
+    const elapsed = now - startTimeRef.current;
+
+    return sequence.map((note) => {
+      const delta = note.time - elapsed;
+      const y = delta / 1000 * SCROLL_SPEED + 200;
+
+      return (
+        <div
+          key={note.id}
+          style={{
+            position: "absolute",
+            left: note.type === "kick" ? "30%" : "60%",
+            top: y,
+            width: 40,
+            height: 40,
+            borderRadius: 8,
+            background: note.type === "kick" ? "#3498db" : "#9b59b6",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            color: "#fff",
+            fontWeight: "bold",
+          }}
+        >
+          {hits[note.id] === "hit" && "✔"}
+          {hits[note.id] === "miss" && "✖"}
+        </div>
+      );
+    });
+  };
 
   return (
     <div style={{ textAlign: "center" }}>
       <h2>Rhythm Drill</h2>
 
       <p style={{ color: "#aaa" }}>
-        Follow the pattern. Hit only when a block appears.
+        Hit notes when they reach the line.<br />
+        <b>Kick = A / 1</b> &nbsp; | &nbsp; <b>Snare = L / 2</b>
       </p>
+
+      {/* BPM */}
+      <div style={{ marginBottom: 10 }}>
+        BPM:
+        <input
+          type="number"
+          value={bpm}
+          onChange={(e) => setBpm(Number(e.target.value))}
+          style={{ width: 60, marginLeft: 6 }}
+        />
+      </div>
 
       {/* DIFFICULTY */}
       <div style={{ marginBottom: 10 }}>
@@ -182,59 +235,39 @@ export default function RhythmTrainer() {
         </select>
       </div>
 
-      {/* COUNTDOWN */}
       {phase === "countdown" && (
         <h1 style={{ fontSize: 48 }}>{countdown}</h1>
       )}
 
-      {/* START */}
       {phase === "idle" && <button onClick={start}>Start Drill</button>}
 
-      {/* PLAY */}
       {phase === "playing" && (
-        <>
-          <div style={{ display: "flex", justifyContent: "center", gap: 6 }}>
-            {Array.from({ length: 16 }).map((_, i) => {
-              const note = sequence.find((s) => s.time === i);
+        <div
+          ref={containerRef}
+          style={{
+            position: "relative",
+            height: 300,
+            border: "1px solid #333",
+            overflow: "hidden",
+            marginTop: 20,
+          }}
+        >
+          {/* HIT LINE */}
+          <div
+            style={{
+              position: "absolute",
+              top: 200,
+              left: 0,
+              right: 0,
+              height: 2,
+              background: "white",
+            }}
+          />
 
-              return (
-                <div
-                  key={i}
-                  style={{
-                    width: 20,
-                    height: 20,
-                    borderRadius: 4,
-                    background:
-                      results[i] === true
-                        ? "#2ecc71"
-                        : results[i] === false
-                        ? "#e74c3c"
-                        : note
-                        ? note.type === "kick"
-                          ? "#2ecc71"
-                          : "#e74c3c"
-                        : i === currentStep
-                        ? "#fff"
-                        : "#333",
-                  }}
-                />
-              );
-            })}
-          </div>
-
-          <div style={{ display: "flex", gap: 20, justifyContent: "center", marginTop: 20 }}>
-            <div onClick={() => tap("kick")} style={{ width: 120, height: 120, background: "#2ecc71", borderRadius: 16, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
-              KICK
-            </div>
-
-            <div onClick={() => tap("snare")} style={{ width: 120, height: 120, background: "#e74c3c", borderRadius: 16, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
-              SNARE
-            </div>
-          </div>
-        </>
+          {renderNotes()}
+        </div>
       )}
 
-      {/* RESULT */}
       {phase === "result" && (
         <>
           <h3>Score: {score}%</h3>
