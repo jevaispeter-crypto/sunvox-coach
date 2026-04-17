@@ -3,61 +3,68 @@
 import { useEffect, useRef, useState } from "react";
 
 export default function RhythmTrainer() {
-  // ✅ FIX: BPM now adjustable
   const [bpm, setBpm] = useState(90);
-  const beatMs = (60 / bpm) * 1000;
-  const hitWindow = 150;
+  const safeBpm = Math.max(30, Math.min(240, bpm || 90));
+  const beatMs = (60 / safeBpm) * 1000;
+
+  const TOTAL_STEPS = 16;
 
   const [sequence, setSequence] = useState([]);
   const [phase, setPhase] = useState("idle");
   const [countdown, setCountdown] = useState(3);
-  const [currentStep, setCurrentStep] = useState(0);
   const [results, setResults] = useState([]);
+  const [timing, setTiming] = useState([]);
   const [score, setScore] = useState(0);
   const [difficulty, setDifficulty] = useState(1);
+
+  // 🔥 NEW
+  const [combo, setCombo] = useState(0);
+  const [maxCombo, setMaxCombo] = useState(0);
 
   const startTimeRef = useRef(0);
   const intervalRef = useRef(null);
 
-  // 🎯 RANDOM PATTERN GENERATOR (unchanged)
+  // 🎯 PATTERN
   const generatePattern = (difficultyLevel) => {
-    const length = 16;
-    let pattern = [];
+    const pattern = new Array(TOTAL_STEPS).fill(null);
 
-    for (let i = 0; i < length; i++) {
+    for (let i = 0; i < TOTAL_STEPS; i++) {
       let type = null;
 
       if (difficultyLevel === 1) {
         if (i % 4 === 0) type = "kick";
         if (i % 4 === 2) type = "snare";
-        if (Math.random() < 0.15) {
-          type = Math.random() < 0.5 ? "kick" : "snare";
-        }
       }
 
       if (difficultyLevel === 2) {
-        if (i % 4 === 0) type = "kick";
-        if (i % 4 === 2) type = "snare";
-        if (Math.random() < 0.4) {
+        if (Math.random() < 0.4)
           type = Math.random() < 0.5 ? "kick" : "snare";
-        }
       }
 
       if (difficultyLevel === 3) {
-        if (Math.random() < 0.7) {
+        if (Math.random() < 0.7)
           type = Math.random() < 0.5 ? "kick" : "snare";
-        }
       }
 
-      if (type) {
-        pattern.push({ time: i, type });
-      }
+      pattern[i] = type;
     }
 
     return pattern;
   };
 
-  // 🔊 METRONOME (unchanged but safe)
+  // 🔊 SOUND (NEW: kick/snare)
+  const playSound = (type) => {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    osc.connect(ctx.destination);
+
+    osc.frequency.value = type === "kick" ? 120 : 300;
+
+    osc.start();
+    osc.stop(ctx.currentTime + 0.08);
+  };
+
+  // 🔊 METRONOME
   const click = (accent) => {
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
     const osc = ctx.createOscillator();
@@ -68,14 +75,16 @@ export default function RhythmTrainer() {
   };
 
   const start = () => {
-    // ✅ FIX: clear any existing interval
     if (intervalRef.current) clearInterval(intervalRef.current);
 
     const newPattern = generatePattern(difficulty);
     setSequence(newPattern);
-
-    setResults(new Array(16).fill(null));
+    setResults(new Array(TOTAL_STEPS).fill(null));
+    setTiming(new Array(TOTAL_STEPS).fill(null));
     setScore(0);
+    setCombo(0);
+    setMaxCombo(0);
+
     setPhase("countdown");
     setCountdown(3);
 
@@ -94,56 +103,94 @@ export default function RhythmTrainer() {
     setPhase("playing");
     startTimeRef.current = performance.now();
 
-    let step = 0;
-
     intervalRef.current = setInterval(() => {
-      setCurrentStep(step);
-      click(step % 4 === 0);
-      step++;
+      const now = performance.now();
+      const elapsed = now - startTimeRef.current;
 
-      if (step >= 16) {
+      const step = Math.floor(elapsed / beatMs);
+
+      click(step % 4 === 0);
+
+      if (step >= TOTAL_STEPS) {
         clearInterval(intervalRef.current);
         finish();
       }
-    }, beatMs);
+    }, 20);
   };
 
-  // 🎯 TAP (unchanged logic)
+  // 🎯 TAP
   const tap = (type) => {
     if (phase !== "playing") return;
+
+    playSound(type);
 
     const now = performance.now();
     const elapsed = now - startTimeRef.current;
 
     const stepIndex = Math.round(elapsed / beatMs);
 
-    if (stepIndex < 0 || stepIndex >= 16) return;
+    if (stepIndex < 0 || stepIndex >= TOTAL_STEPS) return;
 
-    const expected = sequence.find((s) => s.time === stepIndex);
+    const expected = sequence[stepIndex];
 
-    let correct = false;
+    const expectedTime = stepIndex * beatMs;
+    const diff = elapsed - expectedTime;
+
+    let result = false;
+    let timingLabel = "Miss";
 
     if (expected) {
-      const expectedTime = expected.time * beatMs;
-      const diff = Math.abs(elapsed - expectedTime);
-
-      correct = expected.type === type && diff < hitWindow;
+      if (Math.abs(diff) < 60 && expected === type) {
+        result = true;
+        timingLabel = "Perfect";
+      } else if (Math.abs(diff) < 120 && expected === type) {
+        result = true;
+        timingLabel = diff < 0 ? "Early" : "Late";
+      }
     }
 
     setResults((prev) => {
       const updated = [...prev];
-      updated[stepIndex] = correct;
+      updated[stepIndex] = result;
       return updated;
     });
+
+    setTiming((prev) => {
+      const updated = [...prev];
+      updated[stepIndex] = timingLabel;
+      return updated;
+    });
+
+    // 🔥 COMBO LOGIC
+    if (result) {
+      setCombo((c) => {
+        const newCombo = c + 1;
+        setMaxCombo((m) => Math.max(m, newCombo));
+        return newCombo;
+      });
+    } else {
+      setCombo(0);
+    }
   };
 
+  // 🏁 SCORE
   const finish = () => {
     setPhase("result");
 
-    const correctHits = results.filter((r) => r === true).length;
-    const totalNotes = sequence.length || 1;
+    let correctCount = 0;
 
-    setScore(Math.round((correctHits / totalNotes) * 100));
+    for (let i = 0; i < TOTAL_STEPS; i++) {
+      const expected = sequence[i];
+      const result = results[i];
+
+      if (expected === null) {
+        if (result === null) correctCount++;
+      } else {
+        if (result === true) correctCount++;
+      }
+    }
+
+    setScore(Math.round((correctCount / TOTAL_STEPS) * 100));
   };
 
   // ⌨️ INPUT
@@ -161,24 +208,24 @@ export default function RhythmTrainer() {
     <div style={{ textAlign: "center" }}>
       <h2>Rhythm Drill</h2>
 
-      {/* ✅ FIX: clear instructions */}
       <p style={{ color: "#aaa" }}>
-        Follow the pattern.<br />
+        Hit on the line<br />
         <b>Kick = A / 1</b> | <b>Snare = L / 2</b>
       </p>
 
-      {/* ✅ FIX: BPM CONTROL */}
-      <div style={{ marginBottom: 10 }}>
+      <div>Combo: {combo} | Max: {maxCombo}</div>
+
+      <div>
         BPM:
         <input
           type="number"
           value={bpm}
           onChange={(e) => setBpm(Number(e.target.value))}
-          style={{ width: 60, marginLeft: 6 }}
+          style={{ width: 60 }}
         />
       </div>
 
-      <div style={{ marginBottom: 10 }}>
+      <div>
         Difficulty:
         <select
           value={difficulty}
@@ -190,93 +237,70 @@ export default function RhythmTrainer() {
         </select>
       </div>
 
-      {phase === "countdown" && (
-        <h1 style={{ fontSize: 48 }}>{countdown}</h1>
-      )}
-
+      {phase === "countdown" && <h1>{countdown}</h1>}
       {phase === "idle" && <button onClick={start}>Start Drill</button>}
 
       {phase === "playing" && (
-        <>
-          {/* ✅ FIX: clean visual separation */}
-          <div style={{ display: "flex", justifyContent: "center", gap: 6 }}>
-            {Array.from({ length: 16 }).map((_, i) => {
-              const note = sequence.find((s) => s.time === i);
+        <div
+          style={{
+            position: "relative",
+            height: 300,
+            overflow: "hidden",
+            border: "1px solid #333",
+          }}
+        >
+          <div
+            style={{
+              position: "absolute",
+              top: 200,
+              left: 0,
+              right: 0,
+              height: 2,
+              background: "white",
+            }}
+          />
 
-              return (
-                <div
-                  key={i}
-                  style={{
-                    position: "relative",
-                    width: 24,
-                    height: 24,
-                    borderRadius: 4,
-                    background: note
-                      ? note.type === "kick"
-                        ? "#3498db" // blue
-                        : "#9b59b6" // purple
-                      : "#222",
-                    border: i === currentStep ? "2px solid white" : "1px solid #333",
-                  }}
-                >
-                  {/* ✅ FIX: overlay feedback */}
-                  {results[i] !== null && (
-                    <span
-                      style={{
-                        position: "absolute",
-                        top: -6,
-                        right: -6,
-                        fontSize: 14,
-                        color: results[i] ? "#2ecc71" : "#e74c3c",
-                      }}
-                    >
-                      {results[i] ? "✔" : "✖"}
-                    </span>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+          {sequence.map((type, i) => {
+            if (!type) return null;
 
-          <div style={{ display: "flex", gap: 20, justifyContent: "center", marginTop: 20 }}>
-            <div
-              onClick={() => tap("kick")}
-              style={{
-                width: 120,
-                height: 120,
-                background: "#3498db",
-                borderRadius: 16,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                cursor: "pointer",
-              }}
-            >
-              KICK
-            </div>
+            const now = performance.now();
+            const elapsed = now - startTimeRef.current;
 
-            <div
-              onClick={() => tap("snare")}
-              style={{
-                width: 120,
-                height: 120,
-                background: "#9b59b6",
-                borderRadius: 16,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                cursor: "pointer",
-              }}
-            >
-              SNARE
-            </div>
-          </div>
-        </>
+            const y = ((i * beatMs - elapsed) / 1000) * 120 + 200;
+
+            return (
+              <div
+                key={i}
+                style={{
+                  position: "absolute",
+                  left: type === "kick" ? "30%" : "60%",
+                  top: y,
+                  width: 30,
+                  height: 30,
+                  borderRadius: 6,
+                  background:
+                    type === "kick" ? "#3498db" : "#9b59b6",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "#fff",
+                  fontSize: 10,
+                  flexDirection: "column",
+                }}
+              >
+                {results[i] === true && "✔"}
+                {results[i] === false && "✖"}
+                {timing[i] && <span>{timing[i]}</span>}
+              </div>
+            );
+          })}
+        </div>
       )}
 
       {phase === "result" && (
         <>
           <h3>Score: {score}%</h3>
+          <p>Max Combo: {maxCombo}</p>
           <button onClick={start}>Retry</button>
         </>
       )}
