@@ -23,7 +23,6 @@ export default function RhythmTrainer() {
   const [maxCombo, setMaxCombo] = useState(0);
   const [elapsedMs, setElapsedMs] = useState(0);
 
-  // ✅ NEW (minimal)
   const [enduranceMode, setEnduranceMode] = useState(false);
   const totalStepsRef = useRef(0);
   const totalCorrectRef = useRef(0);
@@ -50,6 +49,15 @@ export default function RhythmTrainer() {
 
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
     if (AudioCtx) audioCtxRef.current = new AudioCtx();
+
+    // ✅ FIX: kill audio + timers when leaving
+    return () => {
+      clearTimers();
+      if (audioCtxRef.current) {
+        audioCtxRef.current.close();
+        audioCtxRef.current = null;
+      }
+    };
   }, []);
 
   const playPadSound = (type) => {
@@ -69,7 +77,7 @@ export default function RhythmTrainer() {
     osc.connect(gain);
     gain.connect(ctx.destination);
 
-    gain.gain.value = 0.02; // 🔊 LOWER + STABLE
+    gain.gain.value = 0.02;
 
     osc.frequency.value = accent ? 1200 : 800;
     osc.start();
@@ -81,6 +89,7 @@ export default function RhythmTrainer() {
     if (countdownRef.current) clearInterval(countdownRef.current);
   };
 
+  // ✅ FIX: better EASY mode
   const generatePattern = () => {
     const pattern = new Array(TOTAL_STEPS).fill(null);
 
@@ -88,12 +97,19 @@ export default function RhythmTrainer() {
       if (i % 4 === 0) pattern[i] = "kick";
       if (i % 4 === 2) pattern[i] = "snare";
 
-      if (difficulty >= 2 && Math.random() < 0.25) {
+      if (difficulty === 1 && Math.random() < 0.15) {
         pattern[i] = Math.random() < 0.5 ? "kick" : "snare";
       }
 
-      if (difficulty === 3 && Math.random() < 0.2) {
-        pattern[i] = null;
+      if (difficulty === 2 && Math.random() < 0.25) {
+        pattern[i] = Math.random() < 0.5 ? "kick" : "snare";
+      }
+
+      if (difficulty === 3) {
+        if (Math.random() < 0.7) {
+          pattern[i] = Math.random() < 0.5 ? "kick" : "snare";
+        }
+        if (Math.random() < 0.2) pattern[i] = null;
       }
     }
 
@@ -103,11 +119,11 @@ export default function RhythmTrainer() {
   const start = () => {
     clearTimers();
 
-    const newResults = new Array(TOTAL_STEPS).fill(null);
+    const newPattern = generatePattern();
 
-    setSequence(generatePattern());
-    setResults(newResults);
-    resultsRef.current = newResults;
+    setSequence(newPattern);
+    setResults(new Array(TOTAL_STEPS).fill(null));
+    resultsRef.current = new Array(TOTAL_STEPS).fill(null);
 
     setTiming(new Array(TOTAL_STEPS).fill(null));
     setScore(0);
@@ -142,20 +158,17 @@ export default function RhythmTrainer() {
       const elapsed = now - startTimeRef.current;
       setElapsedMs(elapsed);
 
-      const step = Math.floor((elapsed - startOffset) / beatMs);
+      let step = Math.floor((elapsed - startOffset) / beatMs);
 
       if (step !== lastStepRef.current && step >= 0) {
         playMetronomeClick(step % 4 === 0);
         lastStepRef.current = step;
-
         totalStepsRef.current++;
+      }
 
-        // 🔁 endurance continues seamlessly
-        if (enduranceMode && step >= TOTAL_STEPS) {
-          setSequence(generatePattern());
-          startTimeRef.current = performance.now();
-          lastStepRef.current = -1;
-        }
+      // ✅ FIX: seamless endurance (no reset, no delay)
+      if (enduranceMode && step >= sequence.length) {
+        setSequence((prev) => [...prev, ...generatePattern()]);
       }
 
       if (!enduranceMode && step >= TOTAL_STEPS) {
@@ -174,7 +187,7 @@ export default function RhythmTrainer() {
     const elapsed = now - startTimeRef.current - startOffset;
 
     const stepIndex = Math.round(elapsed / beatMs);
-    if (stepIndex < 0 || stepIndex >= TOTAL_STEPS) return;
+    if (stepIndex < 0 || stepIndex >= sequence.length) return;
 
     const expected = sequence[stepIndex];
     const expectedTime = stepIndex * beatMs;
@@ -220,11 +233,8 @@ export default function RhythmTrainer() {
 
   const finish = () => {
     setPhase("result");
-
-    // ✅ FIXED SCORE
     const total = totalStepsRef.current || TOTAL_STEPS;
     const correct = totalCorrectRef.current;
-
     setScore(Math.round((correct / total) * 100));
   };
 
@@ -247,13 +257,24 @@ export default function RhythmTrainer() {
     <div style={{ textAlign: "center" }}>
       <h2>Rhythm Drill</h2>
 
-      {/* ✅ RESTORED HEADER */}
       <p style={{ color: "#aaa" }}>
         Hit when blocks cross the line<br />
         <b>Kick = A / 1</b> | <b>Snare = L / 2</b>
       </p>
 
-      {/* ✅ NON-DESTRUCTIVE ENDURANCE TOGGLE */}
+      {/* ✅ RESTORED */}
+      <div>
+        Difficulty:
+        <select
+          value={difficulty}
+          onChange={(e) => setDifficulty(Number(e.target.value))}
+        >
+          <option value={1}>Easy</option>
+          <option value={2}>Medium</option>
+          <option value={3}>Hard</option>
+        </select>
+      </div>
+
       <div style={{ marginBottom: 8 }}>
         <label>
           <input
@@ -282,7 +303,6 @@ export default function RhythmTrainer() {
 
       {phase === "playing" && (
         <>
-          {/* ✅ FULL UI RESTORED */}
           <div style={{ position: "relative", height: 300 }}>
             <div style={{ position: "absolute", top: 200, height: 2, background: "white", left: 0, right: 0 }} />
 
@@ -323,44 +343,18 @@ export default function RhythmTrainer() {
             })}
           </div>
 
-          {/* ✅ STOP ONLY IN ENDURANCE */}
           {enduranceMode && (
             <button onClick={stopEndurance} style={{ marginTop: 10 }}>
               STOP
             </button>
           )}
 
-          {/* ✅ PADS PRESERVED */}
           <div style={{ marginTop: 20, display: "flex", justifyContent: "center", gap: 20 }}>
-            <button
-              onClick={() => tap("kick")}
-              style={{
-                width: isTouchDevice ? 140 : 110,
-                height: isTouchDevice ? 140 : 110,
-                background: "#3498db",
-                color: "white",
-                border: "none",
-                borderRadius: 16,
-                fontSize: 18,
-                fontWeight: "bold",
-              }}
-            >
+            <button onClick={() => tap("kick")} style={{ width: isTouchDevice ? 140 : 110, height: isTouchDevice ? 140 : 110, background: "#3498db", color: "white", borderRadius: 16 }}>
               KICK
             </button>
 
-            <button
-              onClick={() => tap("snare")}
-              style={{
-                width: isTouchDevice ? 140 : 110,
-                height: isTouchDevice ? 140 : 110,
-                background: "#9b59b6",
-                color: "white",
-                border: "none",
-                borderRadius: 16,
-                fontSize: 18,
-                fontWeight: "bold",
-              }}
-            >
+            <button onClick={() => tap("snare")} style={{ width: isTouchDevice ? 140 : 110, height: isTouchDevice ? 140 : 110, background: "#9b59b6", color: "white", borderRadius: 16 }}>
               SNARE
             </button>
           </div>
