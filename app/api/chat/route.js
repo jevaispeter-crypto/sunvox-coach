@@ -33,18 +33,21 @@ function loadKnowledgeFolder(folderName) {
 
 export async function POST(req) {
   try {
-    const { messages } = await req.json();
+    const body = await req.json();
+
+    // ✅ SAFE messages handling
+    const messages = Array.isArray(body.messages) ? body.messages : [];
 
     const profile = {
-  level: "beginner",
-  dailyMinutes: 15,
-};
+      level: "beginner",
+      dailyMinutes: 15,
+    };
 
-let progress = global.progress || {
-  currentLesson: 1,
-};
+    let progress = global.progress || {
+      currentLesson: 1,
+    };
 
-global.progress = progress;
+    global.progress = progress;
 
     const theory = loadKnowledgeFolder("theory");
     const sunvox = loadKnowledgeFolder("sunvox");
@@ -115,7 +118,14 @@ ${JSON.stringify(progress, null, 2)}
         { role: "system", content: "Theory Knowledge:\n" + theory },
         { role: "system", content: "SunVox Knowledge:\n" + sunvox },
         { role: "system", content: "Bridge Knowledge:\n" + bridge },
-        ...messages,
+
+        // ✅ SAFE message pipeline
+        ...messages
+          .filter((m) => m && typeof m.content === "string")
+          .map((m) => ({
+            role: m.role === "assistant" ? "assistant" : "user",
+            content: m.content,
+          })),
       ],
     });
 
