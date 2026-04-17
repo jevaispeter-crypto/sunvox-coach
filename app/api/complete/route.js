@@ -3,7 +3,20 @@ import { curriculum } from "@/lib/curriculum";
 export async function POST(req) {
   try {
     const body = await req.json();
-    const { lessonId, reflection, feltEasy, struggledWith } = body;
+
+    // ✅ SAFE INPUT HANDLING (CRITICAL FIX)
+    const lessonId =
+      typeof body.lessonId === "number" && !isNaN(body.lessonId)
+        ? body.lessonId
+        : 1;
+
+    const reflection =
+      typeof body.reflection === "string" ? body.reflection : "";
+
+    const feltEasy = !!body.feltEasy;
+
+    const struggledWith =
+      typeof body.struggledWith === "string" ? body.struggledWith : "";
 
     // =========================
     // 🔥 IN-MEMORY STORAGE (Vercel-safe)
@@ -17,23 +30,43 @@ export async function POST(req) {
       reflections: [],
     };
 
+    // ✅ ENSURE ARRAYS EXIST (extra safety)
+    progress.completedLessons = Array.isArray(progress.completedLessons)
+      ? progress.completedLessons
+      : [];
+
+    progress.weaknesses = Array.isArray(progress.weaknesses)
+      ? progress.weaknesses
+      : [];
+
+    progress.reflections = Array.isArray(progress.reflections)
+      ? progress.reflections
+      : [];
+
     // =========================
     // UPDATE PROGRESS
     // =========================
 
-    if (!progress.completedLessons.includes(lessonId)) {
+    if (
+      typeof lessonId === "number" &&
+      !progress.completedLessons.includes(lessonId)
+    ) {
       progress.completedLessons.push(lessonId);
     }
 
     progress.reflections.push({
       lessonId,
-      reflection: reflection || "",
-      feltEasy: !!feltEasy,
-      struggledWith: struggledWith || "",
+      reflection,
+      feltEasy,
+      struggledWith,
       completedAt: new Date().toISOString(),
     });
 
-    if (struggledWith && !progress.weaknesses.includes(struggledWith)) {
+    if (
+      struggledWith &&
+      typeof struggledWith === "string" &&
+      !progress.weaknesses.includes(struggledWith)
+    ) {
       progress.weaknesses.push(struggledWith);
     }
 
