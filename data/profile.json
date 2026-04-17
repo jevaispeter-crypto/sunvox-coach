@@ -1,0 +1,15 @@
+{
+  "name": "User",
+  "level": "beginner",
+  "goals": [
+    "learn music theory deeply",
+    "apply theory in SunVox",
+    "improve composition"
+  ],
+  "dailyMinutes": 15,
+  "focus": [
+    "rhythm",
+    "melody",
+    "harmony"
+  ]
+}
