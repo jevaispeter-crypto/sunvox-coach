@@ -23,13 +23,18 @@ export default function RhythmTrainer() {
   const [maxCombo, setMaxCombo] = useState(0);
   const [elapsedMs, setElapsedMs] = useState(0);
 
+  const [enduranceMode, setEnduranceMode] = useState(false);
+  const totalStepsRef = useRef(0);
+  const totalCorrectRef = useRef(0);
+
   const startTimeRef = useRef(0);
   const intervalRef = useRef(null);
   const countdownRef = useRef(null);
   const lastStepRef = useRef(-1);
 
-  // ✅ NEW: FIX SCORE DELAY
   const resultsRef = useRef([]);
+
+  const audioCtxRef = useRef(null);
 
   const isTouchDevice =
     typeof window !== "undefined" &&
@@ -42,6 +47,9 @@ export default function RhythmTrainer() {
   useEffect(() => {
     kickRef.current = new Audio("/sounds/kick.wav");
     snareRef.current = new Audio("/sounds/snare.wav");
+
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (AudioCtx) audioCtxRef.current = new AudioCtx();
   }, []);
 
   const playPadSound = (type) => {
@@ -52,9 +60,17 @@ export default function RhythmTrainer() {
   };
 
   const playMetronomeClick = (accent) => {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const ctx = audioCtxRef.current;
+    if (!ctx) return;
+
     const osc = ctx.createOscillator();
-    osc.connect(ctx.destination);
+    const gain = ctx.createGain();
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    gain.gain.value = 0.03; // 🔊 LOWER + STABLE
+
     osc.frequency.value = accent ? 1200 : 800;
     osc.start();
     osc.stop(ctx.currentTime + 0.04);
@@ -91,13 +107,16 @@ export default function RhythmTrainer() {
 
     setSequence(generatePattern());
     setResults(newResults);
-    resultsRef.current = newResults; // ✅ sync ref
+    resultsRef.current = newResults;
 
     setTiming(new Array(TOTAL_STEPS).fill(null));
     setScore(0);
     setCombo(0);
     setMaxCombo(0);
     setElapsedMs(0);
+
+    totalStepsRef.current = 0;
+    totalCorrectRef.current = 0;
 
     setPhase("countdown");
     setCountdown(3);
@@ -128,9 +147,17 @@ export default function RhythmTrainer() {
       if (step !== lastStepRef.current && step >= 0) {
         playMetronomeClick(step % 4 === 0);
         lastStepRef.current = step;
+
+        totalStepsRef.current++;
+
+        if (enduranceMode && step >= TOTAL_STEPS) {
+          setSequence(generatePattern());
+          startTimeRef.current = performance.now();
+          lastStepRef.current = -1;
+        }
       }
 
-      if (step >= TOTAL_STEPS) {
+      if (!enduranceMode && step >= TOTAL_STEPS) {
         clearTimers();
         finish();
       }
@@ -168,7 +195,7 @@ export default function RhythmTrainer() {
     setResults((prev) => {
       const updated = [...prev];
       updated[stepIndex] = correct;
-      resultsRef.current = updated; // ✅ keep ref in sync
+      resultsRef.current = updated;
       return updated;
     });
 
@@ -179,6 +206,7 @@ export default function RhythmTrainer() {
     });
 
     if (correct) {
+      totalCorrectRef.current++;
       setCombo((c) => {
         const next = c + 1;
         setMaxCombo((m) => Math.max(m, next));
@@ -192,20 +220,15 @@ export default function RhythmTrainer() {
   const finish = () => {
     setPhase("result");
 
-    let correctCount = 0;
+    const total = totalStepsRef.current || TOTAL_STEPS;
+    const correct = totalCorrectRef.current;
 
-    for (let i = 0; i < TOTAL_STEPS; i++) {
-      const expected = sequence[i];
-      const result = resultsRef.current[i]; // ✅ FIX HERE
+    setScore(Math.round((correct / total) * 100));
+  };
 
-      if (expected === null) {
-        if (result === null) correctCount++;
-      } else {
-        if (result === true) correctCount++;
-      }
-    }
-
-    setScore(Math.round((correctCount / TOTAL_STEPS) * 100));
+  const stopEndurance = () => {
+    clearTimers();
+    finish();
   };
 
   useEffect(() => {
@@ -222,10 +245,14 @@ export default function RhythmTrainer() {
     <div style={{ textAlign: "center" }}>
       <h2>Rhythm Drill</h2>
 
-      <p style={{ color: "#aaa" }}>
-        Hit when blocks cross the line<br />
-        <b>Kick = A / 1</b> | <b>Snare = L / 2</b>
-      </p>
+      <label>
+        <input
+          type="checkbox"
+          checked={enduranceMode}
+          onChange={(e) => setEnduranceMode(e.target.checked)}
+        />
+        Endurance Mode
+      </label>
 
       <div>Combo: {combo} | Max: {maxCombo}</div>
 
@@ -239,104 +266,11 @@ export default function RhythmTrainer() {
         />
       </div>
 
-      <div>
-        Difficulty:
-        <select
-          value={difficulty}
-          onChange={(e) => setDifficulty(Number(e.target.value))}
-        >
-          <option value={1}>Easy</option>
-          <option value={2}>Medium</option>
-          <option value={3}>Hard</option>
-        </select>
-      </div>
-
       {phase === "countdown" && <h1>{countdown}</h1>}
       {phase === "idle" && <button onClick={start}>Start Drill</button>}
 
-      {phase === "playing" && (
-        <>
-          <div style={{ position: "relative", height: 300 }}>
-            <div style={{ position: "absolute", top: 200, height: 2, background: "white", left: 0, right: 0 }} />
-
-            {sequence.map((type, i) => {
-              if (!type) return null;
-
-              const y =
-                ((i * beatMs + startOffset - elapsedMs) / 1000) *
-                  scrollSpeed +
-                200;
-
-              return (
-                <div
-                  key={i}
-                  style={{
-                    position: "absolute",
-                    left: type === "kick" ? "30%" : "60%",
-                    top: y,
-                    width: 34,
-                    height: 34,
-                    borderRadius: 8,
-                    background:
-                      type === "kick" ? "#3498db" : "#9b59b6",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    flexDirection: "column",
-                    color: "#fff",
-                    fontSize: 10,
-                    transform: "translateX(-50%)",
-                  }}
-                >
-                  {results[i] === true && <span style={{ color: "#2ecc71" }}>✔</span>}
-                  {results[i] === false && <span style={{ color: "#e74c3c" }}>✖</span>}
-                  {timing[i] && <span>{timing[i]}</span>}
-                </div>
-              );
-            })}
-          </div>
-
-          <div
-            style={{
-              marginTop: 20,
-              display: "flex",
-              justifyContent: "center",
-              gap: 20,
-            }}
-          >
-            <button
-              onClick={() => tap("kick")}
-              style={{
-                width: isTouchDevice ? 140 : 110,
-                height: isTouchDevice ? 140 : 110,
-                background: "#3498db",
-                color: "white",
-                border: "none",
-                borderRadius: 16,
-                fontSize: 18,
-                fontWeight: "bold",
-              }}
-            >
-              KICK
-            </button>
-
-            <button
-              onClick={() => tap("snare")}
-              style={{
-                width: isTouchDevice ? 140 : 110,
-                height: isTouchDevice ? 140 : 110,
-                background: "#9b59b6",
-                color: "white",
-                border: "none",
-                borderRadius: 16,
-                fontSize: 18,
-                fontWeight: "bold",
-              }}
-            >
-              SNARE
-            </button>
-          </div>
-        </>
+      {phase === "playing" && enduranceMode && (
+        <button onClick={stopEndurance}>STOP</button>
       )}
 
       {phase === "result" && (
