@@ -111,7 +111,10 @@ export default function Home() {
   };
 
   const completeLesson = async (feltEasy) => {
-    if (!lesson || loading) return;
+  if (!lesson || typeof lesson.lessonId !== "number") {
+    console.error("Invalid lesson state:", lesson);
+    return;
+  }
     setLoading(true);
 
     try {
