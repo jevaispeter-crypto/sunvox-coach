@@ -1,10 +1,6 @@
-import OpenAI from "openai";
 import fs from "fs";
 import path from "path";
-
-const client = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+import { curriculum } from "@/lib/curriculum";
 
 function readJson(filePath, fallback) {
   try {
@@ -14,126 +10,77 @@ function readJson(filePath, fallback) {
   }
 }
 
-function loadKnowledgeFolder(folderName) {
-  const folderPath = path.join(process.cwd(), "knowledge", folderName);
-  if (!fs.existsSync(folderPath)) return "";
-
-  const files = fs.readdirSync(folderPath);
-  let content = "";
-
-  for (const file of files) {
-    if (file.endsWith(".md")) {
-      const filePath = path.join(folderPath, file);
-      content += `\n\n--- ${file} ---\n${fs.readFileSync(filePath, "utf-8")}`;
-    }
-  }
-
-  return content;
+function writeJson(filePath, data) {
+  fs.writeFileSync(filePath, JSON.stringify(data, null, 2), "utf-8");
 }
 
 export async function POST(req) {
   try {
     const body = await req.json();
 
-    // ✅ SAFE messages handling
-    const messages = Array.isArray(body.messages) ? body.messages : [];
+    // ✅ SAFE INPUT HANDLING (THIS FIXES YOUR BUG)
+    const lessonId = body.lessonId ?? 1;
+    const reflection =
+      typeof body.reflection === "string" ? body.reflection : "";
+    const feltEasy = !!body.feltEasy;
+    const struggledWith =
+      typeof body.struggledWith === "string" ? body.struggledWith : "";
 
-    const profile = {
-      level: "beginner",
-      dailyMinutes: 15,
-    };
+    const progressPath = path.join(process.cwd(), "data", "progress.json");
 
-    let progress = global.progress || {
+    const progress = readJson(progressPath, {
       currentLesson: 1,
-    };
-
-    global.progress = progress;
-
-    const theory = loadKnowledgeFolder("theory");
-    const sunvox = loadKnowledgeFolder("sunvox");
-    const bridge = loadKnowledgeFolder("bridge");
-
-    const systemPrompt = `
-You are a music theory tutor and SunVox coach helping ONE student.
-
-You are NOT generating lessons here.
-You are answering questions, clarifying confusion, and helping the student improve.
-
----
-
-CORE BEHAVIOR:
-
-- Be clear and practical
-- Adapt to the student's level and progress
-- Reference their past lessons when useful
-- Focus on understanding and application
-
----
-
-WHEN EXPLAINING:
-
-- Start simple
-- Use examples
-- Keep explanations concise (3–6 lines unless needed)
-- Avoid unnecessary jargon
-
----
-
-WHEN RELEVANT:
-
-- Show how to apply the concept in SunVox
-- Use simple patterns or line numbers
-- Suggest a small experiment if helpful
-
----
-
-DO NOT:
-
-- force lesson structure
-- generate full lessons unless explicitly asked
-- be overly verbose
-- give abstract theory without application
-
----
-
-STYLE:
-
-- Talk like a teacher helping a student 1-on-1
-- Clear, direct, helpful
-`;
-
-    const userContext = `
-Student profile:
-${JSON.stringify(profile, null, 2)}
-
-Student progress:
-${JSON.stringify(progress, null, 2)}
-`;
-
-    const completion = await client.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "system", content: userContext },
-        { role: "system", content: "Theory Knowledge:\n" + theory },
-        { role: "system", content: "SunVox Knowledge:\n" + sunvox },
-        { role: "system", content: "Bridge Knowledge:\n" + bridge },
-
-        // ✅ SAFE message pipeline
-        ...messages
-          .filter((m) => m && typeof m.content === "string")
-          .map((m) => ({
-            role: m.role === "assistant" ? "assistant" : "user",
-            content: m.content,
-          })),
-      ],
+      completedLessons: [],
+      weaknesses: [],
+      strengths: [],
+      reflections: [],
     });
+
+    // ✅ Ensure arrays exist
+    progress.completedLessons = progress.completedLessons || [];
+    progress.weaknesses = progress.weaknesses || [];
+    progress.strengths = progress.strengths || [];
+    progress.reflections = progress.reflections || [];
+
+    // ✅ Save completion
+    if (!progress.completedLessons.includes(lessonId)) {
+      progress.completedLessons.push(lessonId);
+    }
+
+    progress.reflections.push({
+      lessonId,
+      reflection,
+      feltEasy,
+      struggledWith,
+      completedAt: new Date().toISOString(),
+    });
+
+    // ✅ Track weaknesses safely
+    if (struggledWith && !progress.weaknesses.includes(struggledWith)) {
+      progress.weaknesses.push(struggledWith);
+    }
+
+    // ✅ Move forward ONLY if manageable
+    if (feltEasy) {
+      const currentIndex = curriculum.findIndex((l) => l.id === lessonId);
+
+      if (currentIndex >= 0 && currentIndex < curriculum.length - 1) {
+        progress.currentLesson = curriculum[currentIndex + 1].id;
+      }
+    } else {
+      // repeat same lesson
+      progress.currentLesson = lessonId;
+    }
+
+    writeJson(progressPath, progress);
 
     return Response.json({
-      reply: completion.choices[0].message.content,
+      ok: true,
+      nextLesson: progress.currentLesson,
+      progress,
     });
   } catch (error) {
-    console.error("CHAT ERROR:", error);
+    console.error("COMPLETE ERROR:", error);
     return Response.json({ error: error.message }, { status: 500 });
   }
 }
