@@ -10,7 +10,7 @@ export default function RhythmTrainer() {
   const TOTAL_STEPS = 16;
   const hitWindow = 150;
   const scrollSpeed = 120;
-  const startOffset = beatMs * 2; // ✅ delay first notes
+  const startOffset = beatMs * 2;
 
   const [sequence, setSequence] = useState([]);
   const [phase, setPhase] = useState("idle");
@@ -28,7 +28,11 @@ export default function RhythmTrainer() {
   const countdownRef = useRef(null);
   const lastStepRef = useRef(-1);
 
-  // 🔊 AUDIO FILES
+  const isTouchDevice =
+    typeof window !== "undefined" &&
+    (window.matchMedia?.("(pointer: coarse)")?.matches ||
+      "ontouchstart" in window);
+
   const kickRef = useRef(null);
   const snareRef = useRef(null);
 
@@ -58,7 +62,6 @@ export default function RhythmTrainer() {
     if (countdownRef.current) clearInterval(countdownRef.current);
   };
 
-  // 🎯 IMPROVED PATTERN
   const generatePattern = () => {
     const pattern = new Array(TOTAL_STEPS).fill(null);
 
@@ -178,7 +181,6 @@ export default function RhythmTrainer() {
     }
   };
 
-  // 🏁 FIXED SCORE
   const finish = () => {
     setPhase("result");
 
@@ -245,34 +247,89 @@ export default function RhythmTrainer() {
       {phase === "idle" && <button onClick={start}>Start Drill</button>}
 
       {phase === "playing" && (
-        <div style={{ position: "relative", height: 300 }}>
-          <div style={{ position: "absolute", top: 200, height: 2, background: "white", left: 0, right: 0 }} />
+        <>
+          <div style={{ position: "relative", height: 300 }}>
+            <div style={{ position: "absolute", top: 200, height: 2, background: "white", left: 0, right: 0 }} />
 
-          {sequence.map((type, i) => {
-            if (!type) return null;
+            {sequence.map((type, i) => {
+              if (!type) return null;
 
-            const y =
-              ((i * beatMs + startOffset - elapsedMs) / 1000) *
-                scrollSpeed +
-              200;
+              const y =
+                ((i * beatMs + startOffset - elapsedMs) / 1000) *
+                  scrollSpeed +
+                200;
 
-            return (
-              <div
-                key={i}
-                style={{
-                  position: "absolute",
-                  left: type === "kick" ? "30%" : "60%",
-                  top: y,
-                  width: 30,
-                  height: 30,
-                  borderRadius: 6,
-                  background:
-                    type === "kick" ? "#3498db" : "#9b59b6",
-                }}
-              />
-            );
-          })}
-        </div>
+              return (
+                <div
+                  key={i}
+                  style={{
+                    position: "absolute",
+                    left: type === "kick" ? "30%" : "60%",
+                    top: y,
+                    width: 34,
+                    height: 34,
+                    borderRadius: 8,
+                    background:
+                      type === "kick" ? "#3498db" : "#9b59b6",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexDirection: "column",
+                    color: "#fff",
+                    fontSize: 10,
+                    transform: "translateX(-50%)",
+                  }}
+                >
+                  {results[i] === true && <span style={{ color: "#2ecc71" }}>✔</span>}
+                  {results[i] === false && <span style={{ color: "#e74c3c" }}>✖</span>}
+                  {timing[i] && <span>{timing[i]}</span>}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* ✅ Pads restored */}
+          <div
+            style={{
+              marginTop: 20,
+              display: "flex",
+              justifyContent: "center",
+              gap: 20,
+            }}
+          >
+            <button
+              onClick={() => tap("kick")}
+              style={{
+                width: isTouchDevice ? 140 : 110,
+                height: isTouchDevice ? 140 : 110,
+                background: "#3498db",
+                color: "white",
+                border: "none",
+                borderRadius: 16,
+                fontSize: 18,
+                fontWeight: "bold",
+              }}
+            >
+              KICK
+            </button>
+
+            <button
+              onClick={() => tap("snare")}
+              style={{
+                width: isTouchDevice ? 140 : 110,
+                height: isTouchDevice ? 140 : 110,
+                background: "#9b59b6",
+                color: "white",
+                border: "none",
+                borderRadius: 16,
+                fontSize: 18,
+                fontWeight: "bold",
+              }}
+            >
+              SNARE
+            </button>
+          </div>
+        </>
       )}
 
       {phase === "result" && (
