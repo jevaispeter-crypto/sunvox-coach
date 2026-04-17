@@ -35,8 +35,16 @@ export async function POST(req) {
   try {
     const { messages } = await req.json();
 
-    const profile = readJson(path.join(process.cwd(), "data", "profile.json"), {});
-    const progress = readJson(path.join(process.cwd(), "data", "progress.json"), {});
+    const profile = {
+  level: "beginner",
+  dailyMinutes: 15,
+};
+
+let progress = global.progress || {
+  currentLesson: 1,
+};
+
+global.progress = progress;
 
     const theory = loadKnowledgeFolder("theory");
     const sunvox = loadKnowledgeFolder("sunvox");

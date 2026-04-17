@@ -37,14 +37,16 @@ export async function POST() {
     const profilePath = path.join(process.cwd(), "data", "profile.json");
     const progressPath = path.join(process.cwd(), "data", "progress.json");
 
-    const profile = readJson(profilePath, {});
-    const progress = readJson(progressPath, {
-      currentLesson: 1,
-      completedLessons: [],
-      weaknesses: [],
-      strengths: [],
-      reflections: [],
-    });
+    const profile = {
+  level: "beginner",
+  dailyMinutes: 15,
+};
+
+let progress = global.progress || {
+  currentLesson: 1,
+};
+
+global.progress = progress;
 
     const lesson = curriculum.find((l) => l.id === progress.currentLesson) || curriculum[0];
 

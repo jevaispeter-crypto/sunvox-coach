@@ -1,33 +1,25 @@
-import fs from "fs";
-import path from "path";
 import { curriculum } from "@/lib/curriculum";
-
-function readJson(filePath, fallback) {
-  try {
-    return JSON.parse(fs.readFileSync(filePath, "utf-8"));
-  } catch {
-    return fallback;
-  }
-}
-
-function writeJson(filePath, data) {
-  fs.writeFileSync(filePath, JSON.stringify(data, null, 2), "utf-8");
-}
 
 export async function POST(req) {
   try {
     const body = await req.json();
     const { lessonId, reflection, feltEasy, struggledWith } = body;
 
-    const progressPath = path.join(process.cwd(), "data", "progress.json");
+    // =========================
+    // 🔥 IN-MEMORY STORAGE (Vercel-safe)
+    // =========================
 
-    const progress = readJson(progressPath, {
+    let progress = global.progress || {
       currentLesson: 1,
       completedLessons: [],
       weaknesses: [],
       strengths: [],
       reflections: [],
-    });
+    };
+
+    // =========================
+    // UPDATE PROGRESS
+    // =========================
 
     if (!progress.completedLessons.includes(lessonId)) {
       progress.completedLessons.push(lessonId);
@@ -45,19 +37,22 @@ export async function POST(req) {
       progress.weaknesses.push(struggledWith);
     }
 
-    // Move forward ONLY if lesson felt manageable
-if (feltEasy) {
-  const currentIndex = curriculum.findIndex((l) => l.id === lessonId);
+    // =========================
+    // PROGRESSION LOGIC
+    // =========================
 
-  if (currentIndex >= 0 && currentIndex < curriculum.length - 1) {
-    progress.currentLesson = curriculum[currentIndex + 1].id;
-  }
-} else {
-  // Repeat same lesson if struggling
-  progress.currentLesson = lessonId;
-}
+    if (feltEasy) {
+      const currentIndex = curriculum.findIndex((l) => l.id === lessonId);
 
-    writeJson(progressPath, progress);
+      if (currentIndex >= 0 && currentIndex < curriculum.length - 1) {
+        progress.currentLesson = curriculum[currentIndex + 1].id;
+      }
+    } else {
+      progress.currentLesson = lessonId;
+    }
+
+    // Save back to global memory
+    global.progress = progress;
 
     return Response.json({
       ok: true,
