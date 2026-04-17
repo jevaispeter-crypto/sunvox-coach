@@ -3,133 +3,215 @@
 import { useEffect, useRef, useState } from "react";
 
 export default function RhythmTrainer() {
-  const [isPlaying, setIsPlaying] = useState(false);
+  const [phase, setPhase] = useState("idle"); // idle | countdown | playing | result
   const [bpm, setBpm] = useState(90);
+  const [countdown, setCountdown] = useState(3);
   const [score, setScore] = useState(null);
-  const [pattern, setPattern] = useState([
-    { time: 0, type: "kick" },
-    { time: 1, type: "snare" },
-    { time: 2, type: "kick" },
-    { time: 3, type: "snare" },
-  ]);
+  const [feedback, setFeedback] = useState([]);
+  const [currentBeat, setCurrentBeat] = useState(0);
+
+  const pattern = [
+    { step: 0, type: "kick" },
+    { step: 2, type: "snare" },
+    { step: 4, type: "kick" },
+    { step: 6, type: "snare" },
+  ];
 
   const startTimeRef = useRef(null);
   const tapsRef = useRef([]);
+  const intervalRef = useRef(null);
 
-useEffect(() => {
-  if (!isPlaying) return;
+  const beatDuration = 60 / bpm;
+  const totalSteps = 8;
 
-    const handler = (e) => {
-    if (e.key === "a") tap("kick");
-    if (e.key === "l") tap("snare");
+  // 🎯 START FLOW
+  const start = () => {
+    setPhase("countdown");
+    setCountdown(3);
+    setScore(null);
+    setFeedback([]);
+    tapsRef.current = [];
+
+    let count = 3;
+    const id = setInterval(() => {
+      count--;
+      setCountdown(count);
+
+      if (count === 0) {
+        clearInterval(id);
+        beginPlaying();
+      }
+    }, 1000);
   };
 
-  window.addEventListener("keydown", handler);
-  return () => window.removeEventListener("keydown", handler);
-}, [isPlaying]);
-
-  // 🎧 METRONOME
-  useEffect(() => {
-    if (!isPlaying) return;
-
-    const interval = (60 / bpm) * 1000;
-
-    const id = setInterval(() => {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      const osc = ctx.createOscillator();
-      osc.connect(ctx.destination);
-      osc.frequency.value = 1000;
-      osc.start();
-      osc.stop(ctx.currentTime + 0.05);
-    }, interval);
-
-    return () => clearInterval(id);
-  }, [isPlaying, bpm]);
-
-  // 🎯 START SESSION
-  const start = () => {
-    tapsRef.current = [];
+  const beginPlaying = () => {
+    setPhase("playing");
     startTimeRef.current = performance.now();
-    setScore(null);
-    setIsPlaying(true);
 
-    // stop after 4 seconds
+    let step = 0;
+
+    intervalRef.current = setInterval(() => {
+      setCurrentBeat(step % totalSteps);
+      playClick(step === 0); // accent first beat
+      step++;
+    }, beatDuration * 1000);
+
     setTimeout(() => {
-      setIsPlaying(false);
+      clearInterval(intervalRef.current);
       evaluate();
-    }, 4000);
+      setPhase("result");
+    }, totalSteps * beatDuration * 1000);
+  };
+
+  // 🔊 METRONOME
+  const playClick = (accent) => {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    osc.connect(ctx.destination);
+    osc.frequency.value = accent ? 1200 : 800;
+    osc.start();
+    osc.stop(ctx.currentTime + 0.05);
   };
 
   // 👇 TAP INPUT
-  const tap = (type = "kick") => {
-    if (!isPlaying) return;
+  const tap = (type) => {
+    if (phase !== "playing") return;
 
     const now = performance.now();
-    const relative = (now - startTimeRef.current) / 1000;
+    const time = (now - startTimeRef.current) / 1000;
 
-    tapsRef.current.push({
-      time: relative,
-      type,
-    });
+    tapsRef.current.push({ time, type });
   };
 
-  // 🎯 SCORING
+  // 🎯 EVALUATION (fixed logic)
   const evaluate = () => {
-    const beatDuration = 60 / bpm;
-
+    let results = [];
     let totalError = 0;
-    let count = 0;
 
     pattern.forEach((expected) => {
-      const closest = tapsRef.current.reduce((prev, curr) => {
-        return Math.abs(curr.time - expected.time * beatDuration) <
-          Math.abs(prev.time - expected.time * beatDuration)
-          ? curr
-          : prev;
-      }, tapsRef.current[0]);
+      const expectedTime = expected.step * beatDuration;
+
+      const closest = tapsRef.current.reduce((best, tap) => {
+        const diff = Math.abs(tap.time - expectedTime);
+        if (!best || diff < best.diff) {
+          return { tap, diff };
+        }
+        return best;
+      }, null);
 
       if (closest) {
-        const error = Math.abs(
-          closest.time - expected.time * beatDuration
-        );
-        totalError += error;
-        count++;
+        const isCorrectType = closest.tap.type === expected.type;
+        const isOnTime = closest.diff < 0.15;
+
+        results.push({
+          correct: isCorrectType && isOnTime,
+        });
+
+        totalError += closest.diff;
       }
     });
 
-    const avgError = totalError / count;
-    const finalScore = Math.max(0, 100 - avgError * 200);
+    const avgError = totalError / pattern.length;
+    const finalScore = Math.max(0, 100 - avgError * 300);
 
-    setScore(finalScore.toFixed(0));
+    setFeedback(results);
+    setScore(Math.round(finalScore));
   };
 
+  // ⌨️ KEYBOARD INPUT
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.key === "a" || e.key === "1") tap("kick");
+      if (e.key === "l" || e.key === "2") tap("snare");
+    };
+
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [phase]);
+
   return (
-    <div style={{ padding: 20 }}>
-      <h2>Rhythm Trainer</h2>
+    <div style={{ textAlign: "center" }}>
+      <h2>Rhythm Drill</h2>
 
-      <button onClick={start} disabled={isPlaying}>
-        {isPlaying ? "Playing..." : "Start"}
-      </button>
-
-      <div style={{ marginTop: 20 }}>
-        <button onClick={() => tap("kick")}>Kick (A)</button>
-        <button onClick={() => tap("snare")}>Snare (L)</button>
-      </div>
-
-      <p style={{ marginTop: 20 }}>
-        BPM:
-        <input
-          type="number"
-          value={bpm}
-          onChange={(e) => setBpm(Number(e.target.value))}
-          style={{ marginLeft: 10 }}
-        />
+      {/* 🧠 INSTRUCTIONS */}
+      <p style={{ color: "#aaa", marginBottom: 20 }}>
+        Follow the rhythm. Tap <b>A / 1</b> for Kick and <b>L / 2</b> for Snare.
+        Stay in time with the metronome.
       </p>
 
-      {score && (
-        <h3>
-          Score: {score}%
-        </h3>
+      {/* ⏳ COUNTDOWN */}
+      {phase === "countdown" && (
+        <h1 style={{ fontSize: 48 }}>{countdown}</h1>
+      )}
+
+      {/* ▶️ START */}
+      {phase === "idle" && (
+        <button onClick={start}>Start Drill</button>
+      )}
+
+      {/* 🎧 PLAYING */}
+      {phase === "playing" && (
+        <>
+          <div style={{ marginBottom: 20 }}>
+            Beat: {currentBeat + 1}
+          </div>
+
+          {/* 🟩 PADS */}
+          <div style={{ display: "flex", gap: 20, justifyContent: "center" }}>
+            <div
+              onClick={() => tap("kick")}
+              style={{
+                width: 120,
+                height: 120,
+                background: "#2ecc71",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                borderRadius: 16,
+                fontWeight: "bold",
+                cursor: "pointer",
+              }}
+            >
+              KICK
+            </div>
+
+            <div
+              onClick={() => tap("snare")}
+              style={{
+                width: 120,
+                height: 120,
+                background: "#e74c3c",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                borderRadius: 16,
+                fontWeight: "bold",
+                cursor: "pointer",
+              }}
+            >
+              SNARE
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* 🏁 RESULT */}
+      {phase === "result" && (
+        <>
+          <h3>Score: {score}%</h3>
+
+          <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
+            {feedback.map((f, i) => (
+              <span key={i} style={{ fontSize: 24 }}>
+                {f.correct ? "✔" : "✖"}
+              </span>
+            ))}
+          </div>
+
+          <button onClick={start} style={{ marginTop: 20 }}>
+            Retry
+          </button>
+        </>
       )}
     </div>
   );
