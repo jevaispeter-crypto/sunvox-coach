@@ -4,7 +4,10 @@ export async function POST(req) {
   try {
     const body = await req.json();
 
-    // ✅ SAFE INPUT HANDLING (CRITICAL FIX)
+    // =========================
+    // ✅ SAFE INPUT HANDLING
+    // =========================
+
     const lessonId =
       typeof body.lessonId === "number" && !isNaN(body.lessonId)
         ? body.lessonId
@@ -19,38 +22,46 @@ export async function POST(req) {
       typeof body.struggledWith === "string" ? body.struggledWith : "";
 
     // =========================
-    // 🔥 IN-MEMORY STORAGE (Vercel-safe)
+    // 🔥 IN-MEMORY STORAGE (VERCEL SAFE)
     // =========================
 
-    let progress = global.progress || {
-      currentLesson: 1,
-      completedLessons: [],
-      weaknesses: [],
-      strengths: [],
-      reflections: [],
-    };
+    let progress = global.progress;
 
-    // ✅ ENSURE ARRAYS EXIST (extra safety)
-    progress.completedLessons = Array.isArray(progress.completedLessons)
-      ? progress.completedLessons
-      : [];
-
-    progress.weaknesses = Array.isArray(progress.weaknesses)
-      ? progress.weaknesses
-      : [];
-
-    progress.reflections = Array.isArray(progress.reflections)
-      ? progress.reflections
-      : [];
+    if (!progress) {
+      progress = {
+        currentLesson: 1,
+        completedLessons: [],
+        weaknesses: [],
+        strengths: [],
+        reflections: [],
+      };
+    }
 
     // =========================
-    // UPDATE PROGRESS
+    // ✅ ENSURE STRUCTURE (VERY IMPORTANT)
     // =========================
 
-    if (
-      typeof lessonId === "number" &&
-      !progress.completedLessons.includes(lessonId)
-    ) {
+    if (!Array.isArray(progress.completedLessons)) {
+      progress.completedLessons = [];
+    }
+
+    if (!Array.isArray(progress.weaknesses)) {
+      progress.weaknesses = [];
+    }
+
+    if (!Array.isArray(progress.strengths)) {
+      progress.strengths = [];
+    }
+
+    if (!Array.isArray(progress.reflections)) {
+      progress.reflections = [];
+    }
+
+    // =========================
+    // 🧠 UPDATE PROGRESS
+    // =========================
+
+    if (!progress.completedLessons.includes(lessonId)) {
       progress.completedLessons.push(lessonId);
     }
 
@@ -62,16 +73,12 @@ export async function POST(req) {
       completedAt: new Date().toISOString(),
     });
 
-    if (
-      struggledWith &&
-      typeof struggledWith === "string" &&
-      !progress.weaknesses.includes(struggledWith)
-    ) {
+    if (struggledWith && !progress.weaknesses.includes(struggledWith)) {
       progress.weaknesses.push(struggledWith);
     }
 
     // =========================
-    // PROGRESSION LOGIC
+    // 🚀 PROGRESSION LOGIC
     // =========================
 
     if (feltEasy) {
@@ -81,10 +88,14 @@ export async function POST(req) {
         progress.currentLesson = curriculum[currentIndex + 1].id;
       }
     } else {
+      // repeat same lesson
       progress.currentLesson = lessonId;
     }
 
-    // Save back to global memory
+    // =========================
+    // 💾 SAVE TO GLOBAL MEMORY
+    // =========================
+
     global.progress = progress;
 
     return Response.json({
