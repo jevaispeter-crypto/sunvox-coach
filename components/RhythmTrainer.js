@@ -23,6 +23,7 @@ export default function RhythmTrainer() {
   const [maxCombo, setMaxCombo] = useState(0);
   const [elapsedMs, setElapsedMs] = useState(0);
 
+  // ✅ NEW (minimal)
   const [enduranceMode, setEnduranceMode] = useState(false);
   const totalStepsRef = useRef(0);
   const totalCorrectRef = useRef(0);
@@ -33,7 +34,6 @@ export default function RhythmTrainer() {
   const lastStepRef = useRef(-1);
 
   const resultsRef = useRef([]);
-
   const audioCtxRef = useRef(null);
 
   const isTouchDevice =
@@ -69,7 +69,7 @@ export default function RhythmTrainer() {
     osc.connect(gain);
     gain.connect(ctx.destination);
 
-    gain.gain.value = 0.03; // 🔊 LOWER + STABLE
+    gain.gain.value = 0.02; // 🔊 LOWER + STABLE
 
     osc.frequency.value = accent ? 1200 : 800;
     osc.start();
@@ -150,6 +150,7 @@ export default function RhythmTrainer() {
 
         totalStepsRef.current++;
 
+        // 🔁 endurance continues seamlessly
         if (enduranceMode && step >= TOTAL_STEPS) {
           setSequence(generatePattern());
           startTimeRef.current = performance.now();
@@ -220,6 +221,7 @@ export default function RhythmTrainer() {
   const finish = () => {
     setPhase("result");
 
+    // ✅ FIXED SCORE
     const total = totalStepsRef.current || TOTAL_STEPS;
     const correct = totalCorrectRef.current;
 
@@ -245,14 +247,23 @@ export default function RhythmTrainer() {
     <div style={{ textAlign: "center" }}>
       <h2>Rhythm Drill</h2>
 
-      <label>
-        <input
-          type="checkbox"
-          checked={enduranceMode}
-          onChange={(e) => setEnduranceMode(e.target.checked)}
-        />
-        Endurance Mode
-      </label>
+      {/* ✅ RESTORED HEADER */}
+      <p style={{ color: "#aaa" }}>
+        Hit when blocks cross the line<br />
+        <b>Kick = A / 1</b> | <b>Snare = L / 2</b>
+      </p>
+
+      {/* ✅ NON-DESTRUCTIVE ENDURANCE TOGGLE */}
+      <div style={{ marginBottom: 8 }}>
+        <label>
+          <input
+            type="checkbox"
+            checked={enduranceMode}
+            onChange={(e) => setEnduranceMode(e.target.checked)}
+          />
+          Endurance Mode
+        </label>
+      </div>
 
       <div>Combo: {combo} | Max: {maxCombo}</div>
 
@@ -269,8 +280,91 @@ export default function RhythmTrainer() {
       {phase === "countdown" && <h1>{countdown}</h1>}
       {phase === "idle" && <button onClick={start}>Start Drill</button>}
 
-      {phase === "playing" && enduranceMode && (
-        <button onClick={stopEndurance}>STOP</button>
+      {phase === "playing" && (
+        <>
+          {/* ✅ FULL UI RESTORED */}
+          <div style={{ position: "relative", height: 300 }}>
+            <div style={{ position: "absolute", top: 200, height: 2, background: "white", left: 0, right: 0 }} />
+
+            {sequence.map((type, i) => {
+              if (!type) return null;
+
+              const y =
+                ((i * beatMs + startOffset - elapsedMs) / 1000) *
+                  scrollSpeed +
+                200;
+
+              return (
+                <div
+                  key={i}
+                  style={{
+                    position: "absolute",
+                    left: type === "kick" ? "30%" : "60%",
+                    top: y,
+                    width: 34,
+                    height: 34,
+                    borderRadius: 8,
+                    background:
+                      type === "kick" ? "#3498db" : "#9b59b6",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexDirection: "column",
+                    color: "#fff",
+                    fontSize: 10,
+                    transform: "translateX(-50%)",
+                  }}
+                >
+                  {results[i] === true && <span style={{ color: "#2ecc71" }}>✔</span>}
+                  {results[i] === false && <span style={{ color: "#e74c3c" }}>✖</span>}
+                  {timing[i] && <span>{timing[i]}</span>}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* ✅ STOP ONLY IN ENDURANCE */}
+          {enduranceMode && (
+            <button onClick={stopEndurance} style={{ marginTop: 10 }}>
+              STOP
+            </button>
+          )}
+
+          {/* ✅ PADS PRESERVED */}
+          <div style={{ marginTop: 20, display: "flex", justifyContent: "center", gap: 20 }}>
+            <button
+              onClick={() => tap("kick")}
+              style={{
+                width: isTouchDevice ? 140 : 110,
+                height: isTouchDevice ? 140 : 110,
+                background: "#3498db",
+                color: "white",
+                border: "none",
+                borderRadius: 16,
+                fontSize: 18,
+                fontWeight: "bold",
+              }}
+            >
+              KICK
+            </button>
+
+            <button
+              onClick={() => tap("snare")}
+              style={{
+                width: isTouchDevice ? 140 : 110,
+                height: isTouchDevice ? 140 : 110,
+                background: "#9b59b6",
+                color: "white",
+                border: "none",
+                borderRadius: 16,
+                fontSize: 18,
+                fontWeight: "bold",
+              }}
+            >
+              SNARE
+            </button>
+          </div>
+        </>
       )}
 
       {phase === "result" && (
