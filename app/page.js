@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -10,11 +10,31 @@ export default function Home() {
   const [lesson, setLesson] = useState(null);
   const [reflection, setReflection] = useState("");
   const [struggledWith, setStruggledWith] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const chatEndRef = useRef(null);
+
+  // 🔥 auto-scroll
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  // 🔥 load chat from localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem("messages");
+    if (saved) setMessages(JSON.parse(saved));
+  }, []);
+
+  // 🔥 save chat
+  useEffect(() => {
+    localStorage.setItem("messages", JSON.stringify(messages));
+  }, [messages]);
 
   const sendMessage = async () => {
     if (!input.trim()) return;
 
     const userInput = input.toLowerCase();
+    setLoading(true);
 
     const isLessonRequest =
       userInput.includes("lesson") ||
@@ -36,6 +56,7 @@ export default function Home() {
         { role: "assistant", content: data.lessonText },
       ]);
 
+      setLoading(false);
       return;
     }
 
@@ -53,9 +74,12 @@ export default function Home() {
     const data = await res.json();
 
     setMessages([...newMessages, { role: "assistant", content: data.reply }]);
+    setLoading(false);
   };
 
   const getLesson = async () => {
+    setLoading(true);
+
     const res = await fetch("/api/lesson", {
       method: "POST",
     });
@@ -69,6 +93,8 @@ export default function Home() {
         { role: "assistant", content: data.lessonText },
       ]);
     }
+
+    setLoading(false);
   };
 
   const completeLesson = async (feltEasy) => {
@@ -113,10 +139,17 @@ export default function Home() {
         fontFamily: "system-ui, sans-serif",
       }}
     >
-      <h1 style={{ textAlign: "center", marginBottom: 20, color: "indigo",   WebkitTextStroke: "0.5px white",
-    textShadow: "0 0 10px rgba(255,255,255,0.3)",
-    fontWeight: "bold",}}>
-        🎛 S U N V O X|C O A C H
+      <h1
+        style={{
+          textAlign: "center",
+          marginBottom: 20,
+          color: "indigo",
+          WebkitTextStroke: "0.5px white",
+          textShadow: "0 0 10px rgba(255,255,255,0.3)",
+          fontWeight: "bold",
+        }}
+      >
+        🎛 S U N V O X | C O A C H
       </h1>
 
       <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
@@ -133,6 +166,20 @@ export default function Home() {
           }}
         >
           Get Today’s Lesson
+        </button>
+
+        <button
+          onClick={() => setMessages([])}
+          style={{
+            padding: "12px 16px",
+            borderRadius: 10,
+            border: "none",
+            background: "#444",
+            color: "white",
+            cursor: "pointer",
+          }}
+        >
+          Clear Chat
         </button>
       </div>
 
@@ -175,27 +222,14 @@ export default function Home() {
             }}
           >
             <strong>{m.role === "user" ? "You" : "Coach"}:</strong>
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              components={{
-                h1: (props) => (
-                  <h1 style={{ fontSize: "22px", marginTop: 10 }} {...props} />
-                ),
-                h2: (props) => (
-                  <h2 style={{ fontSize: "18px", marginTop: 10 }} {...props} />
-                ),
-                p: (props) => (
-                  <p style={{ marginBottom: 8, lineHeight: 1.6 }} {...props} />
-                ),
-                li: (props) => (
-                  <li style={{ marginLeft: 20, marginBottom: 4 }} {...props} />
-                ),
-              }}
-            >
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>
               {m.content}
             </ReactMarkdown>
           </div>
         ))}
+
+        {/* 🔥 auto-scroll anchor */}
+        <div ref={chatEndRef} />
       </div>
 
       {lesson && (
@@ -210,9 +244,6 @@ export default function Home() {
         >
           <h2 style={{ marginBottom: 16 }}>After the lesson</h2>
 
-          <label style={{ display: "block", marginBottom: 6, color: "#aaa" }}>
-            What felt clear? What felt difficult?
-          </label>
           <textarea
             value={reflection}
             onChange={(e) => setReflection(e.target.value)}
@@ -225,14 +256,9 @@ export default function Home() {
               background: "#111",
               color: "#fff",
               marginBottom: 16,
-              resize: "vertical",
-              lineHeight: 1.5,
             }}
           />
 
-          <label style={{ display: "block", marginBottom: 6, color: "#aaa" }}>
-            What did you struggle with most?
-          </label>
           <input
             value={struggledWith}
             onChange={(e) => setStruggledWith(e.target.value)}
@@ -258,7 +284,6 @@ export default function Home() {
                 background: "#2ecc71",
                 color: "#000",
                 fontWeight: "bold",
-                cursor: "pointer",
               }}
             >
               ✔ This felt manageable
@@ -274,7 +299,6 @@ export default function Home() {
                 background: "#e74c3c",
                 color: "#fff",
                 fontWeight: "bold",
-                cursor: "pointer",
               }}
             >
               ✖ I need more work
@@ -287,6 +311,9 @@ export default function Home() {
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") sendMessage();
+          }}
           placeholder="Ask a question..."
           style={{
             flex: 1,
@@ -297,8 +324,10 @@ export default function Home() {
             color: "#fff",
           }}
         />
+
         <button
           onClick={sendMessage}
+          disabled={loading}
           style={{
             padding: "12px 16px",
             borderRadius: 10,
@@ -307,9 +336,10 @@ export default function Home() {
             color: "white",
             cursor: "pointer",
             fontWeight: "bold",
+            opacity: loading ? 0.6 : 1,
           }}
         >
-          Send
+          {loading ? "..." : "Send"}
         </button>
       </div>
     </main>
