@@ -9,7 +9,7 @@ export default function RhythmTrainer() {
 
   const STEPS_PER_MEASURE = 16;
 const stepMs = beatMs / 4;
-const hitWindow = 150;
+const hitWindow = 200;
 const scrollSpeed = 120;
 const startOffset = beatMs * 2;
 const hearGapMs = beatMs * 2;
@@ -95,30 +95,60 @@ const hearGapMs = beatMs * 2;
   };
 
   const generatePattern = () => {
-    const pattern = new Array(STEPS_PER_MEASURE).fill(null);
+  const pattern = new Array(STEPS_PER_MEASURE).fill(null);
 
-    for (let i = 0; i < STEPS_PER_MEASURE; i++) {
-      if (i % 4 === 0) pattern[i] = "kick";
-      if (i % 4 === 2) pattern[i] = "snare";
+  for (let i = 0; i < STEPS_PER_MEASURE; i++) {
+    const isQuarter = i % 4 === 0;
+    const isEighth = i % 2 === 0 && !isQuarter;
 
-      if (difficulty === 1 && Math.random() < 0.15) {
+    // --- EASY ---
+    if (difficulty === 1) {
+      // Strong base groove
+      if (i === 0 || i === 8) pattern[i] = "kick";
+      if (i === 4 || i === 12) pattern[i] = "snare";
+
+      // Occasional eighth notes
+      if (isEighth && Math.random() < 0.25) {
         pattern[i] = Math.random() < 0.5 ? "kick" : "snare";
       }
 
-      if (difficulty === 2 && Math.random() < 0.25) {
+      // VERY rare 16th notes
+      if (!isEighth && !isQuarter && Math.random() < 0.05) {
         pattern[i] = Math.random() < 0.5 ? "kick" : "snare";
-      }
-
-      if (difficulty === 3) {
-        if (Math.random() < 0.7) {
-          pattern[i] = Math.random() < 0.5 ? "kick" : "snare";
-        }
-        if (Math.random() < 0.2) pattern[i] = null;
       }
     }
 
-    return pattern;
-  };
+    // --- MEDIUM ---
+    if (difficulty === 2) {
+      if (i === 0 || i === 8) pattern[i] = "kick";
+      if (i === 4 || i === 12) pattern[i] = "snare";
+
+      // More frequent eighths
+      if (isEighth && Math.random() < 0.5) {
+        pattern[i] = Math.random() < 0.5 ? "kick" : "snare";
+      }
+
+      // Some syncopation
+      if (!isEighth && !isQuarter && Math.random() < 0.15) {
+        pattern[i] = Math.random() < 0.5 ? "kick" : "snare";
+      }
+    }
+
+    // --- HARD ---
+    if (difficulty === 3) {
+      if (Math.random() < 0.7) {
+        pattern[i] = Math.random() < 0.5 ? "kick" : "snare";
+      }
+
+      // reduce clutter slightly
+      if (Math.random() < 0.15) {
+        pattern[i] = null;
+      }
+    }
+  }
+
+  return pattern;
+};
 
   const start = () => {
     clearTimers();
@@ -269,7 +299,7 @@ totalStepsRef.current = sequenceRef.current.filter(Boolean).length;
     const now = performance.now();
     const elapsed = now - startTimeRef.current - startOffset;
 
-    const stepIndex = Math.floor((elapsed + hitWindow / 2) / stepMs);
+    const stepIndex = Math.round(elapsed / stepMs);
     if (stepIndex < 0 || stepIndex >= sequence.length) return;
 
     if (resultsRef.current[stepIndex] !== null) return;
@@ -375,41 +405,110 @@ totalStepsRef.current = sequenceRef.current.filter(Boolean).length;
 
       {phase === "playing" && (
         <>
-          <div style={{ position: "relative", height: 300 }}>
-            <div style={{ position: "absolute", top: 200, height: 2, background: "white", left: 0, right: 0 }} />
+          <div style={{ position: "relative", height: 300, overflow: "hidden" }}>
+            <div
+  style={{
+    position: "absolute",
+    top: 200,
+    height: 4,
+    background: "#ffffff",
+    left: 0,
+    right: 0,
+    boxShadow: "0 0 8px rgba(255,255,255,0.45)",
+    zIndex: 1,
+  }}
+/>
 
             {sequence.map((type, i) => {
-              if (!type) return null;
+  if (!type) return null;
 
-              const y =
-                ((i * stepMs + startOffset - elapsedMs) / 1000) * scrollSpeed + 200;
+  const y =
+    ((i * stepMs + startOffset - elapsedMs) / 1000) * scrollSpeed + 200;
 
-              return (
-                <div
-                  key={i}
-                  style={{
-                    position: "absolute",
-                    left: type === "kick" ? "30%" : "60%",
-                    top: y,
-                    width: 34,
-                    height: 34,
-                    borderRadius: 8,
-                    background: type === "kick" ? "#3498db" : "#9b59b6",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    flexDirection: "column",
-                    color: "#fff",
-                    fontSize: 10,
-                    transform: "translateX(-50%)",
-                  }}
-                >
-                  {results[i] === true && <span style={{ color: "#2ecc71" }}>✔</span>}
-                  {results[i] === false && <span style={{ color: "#e74c3c" }}>✖</span>}
-                  {timing[i] && <span>{timing[i]}</span>}
-                </div>
-              );
-            })}
+  return (
+    <div
+  key={i}
+  style={{
+    position: "absolute",
+    left: type === "kick" ? "30%" : "60%",
+    top: y,
+    transform: "translate(-50%, -50%)",
+    width: 60,
+    height: 24,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 2,
+    pointerEvents: "none",
+    }}
+    >
+      {/* FEEDBACK */}
+      {timing[i] && (
+  <div
+    style={{
+      position: "absolute",
+      left: type === "kick" ? -55 : 55,
+      top: "50%",
+      transform: "translateY(-50%)",
+      fontSize: 12,
+      fontWeight: "bold",
+      color:
+        timing[i] === "Perfect"
+          ? "#2ecc71"
+          : timing[i] === "Miss"
+          ? "#e74c3c"
+          : "#f1c40f",
+      textShadow: "0 2px 6px rgba(0,0,0,0.9)",
+      whiteSpace: "nowrap",
+      pointerEvents: "none",
+    }}
+  >
+    {timing[i]}
+  </div>
+)}
+
+    {/* LINE + CENTER BUBBLE */}
+<div
+  style={{
+    position: "relative",
+    width: 40,
+    height: 10,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  }}
+>
+  {/* LINE */}
+  <div
+    style={{
+      position: "absolute",
+      width: "100%",
+      height: 6,
+      background: type === "kick" ? "#3498db" : "#9b59b6",
+      border: "2px solid white",
+      borderRadius: 6,
+      boxShadow: "0 2px 6px rgba(0,0,0,0.4)",
+    }}
+  />
+
+  {/* CENTER BUBBLE */}
+  <div
+    style={{
+      position: "absolute",
+      width: 20,
+      height: 20,
+      borderRadius: "50%",
+      background: "#ffffff",
+      border: `2px solid ${
+        type === "kick" ? "#3498db" : "#9b59b6"
+      }`,
+      boxShadow: "0 1px 4px rgba(0,0,0,0.5)",
+    }}
+  />
+</div>
+    </div>
+  );
+})}
           </div>
 
           <div style={{ marginTop: 20, display: "flex", justifyContent: "center", gap: 20 }}>
