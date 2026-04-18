@@ -8,9 +8,11 @@ export default function RhythmTrainer() {
   const beatMs = (60 / safeBpm) * 1000;
 
   const STEPS_PER_MEASURE = 16;
-  const hitWindow = 150;
-  const scrollSpeed = 120;
-  const startOffset = beatMs * 2;
+const stepMs = beatMs / 4;
+const hitWindow = 150;
+const scrollSpeed = 120;
+const startOffset = beatMs * 2;
+const hearGapMs = beatMs * 2;
 
   const [measures, setMeasures] = useState(2);
   const [sequence, setSequence] = useState([]);
@@ -31,6 +33,7 @@ export default function RhythmTrainer() {
   const intervalRef = useRef(null);
   const countdownRef = useRef(null);
   const lastStepRef = useRef(-1);
+  const heardStepsRef = useRef([]);
 
   const resultsRef = useRef([]);
   const audioCtxRef = useRef(null);
@@ -137,6 +140,8 @@ export default function RhythmTrainer() {
     setMaxCombo(0);
     setElapsedMs(0);
 
+    heardStepsRef.current = new Array(fullSequence.length).fill(false);
+
     totalStepsRef.current = fullSequence.filter(Boolean).length;
     totalCorrectRef.current = 0;
 
@@ -148,27 +153,104 @@ export default function RhythmTrainer() {
       c--;
       setCountdown(c);
       if (c === 0) {
-        clearTimers();
-        begin();
-      }
+  clearTimers();
+  beginHearPhase();
+  }
     }, 1000);
   };
 
-  const begin = () => {
+const beginHearPhase = () => {
+  setPhase("hearing");
+  startTimeRef.current = performance.now();
+  lastStepRef.current = -1;
+  setElapsedMs(0);
+
+  intervalRef.current = setInterval(() => {
+    const now = performance.now();
+    const elapsed = now - startTimeRef.current;
+    setElapsedMs(elapsed);
+
+    const step = Math.floor(elapsed / stepMs);
+
+    if (step !== lastStepRef.current && step >= 0) {
+      if (step % 4 === 0) {
+        playMetronomeClick((step / 4) % 4 === 0);
+      }
+      lastStepRef.current = step;
+    }
+
+    sequenceRef.current.forEach((type, i) => {
+      if (!type) return;
+      if (heardStepsRef.current[i]) return;
+
+      const noteTime = i * stepMs;
+      if (elapsed >= noteTime) {
+        playPadSound(type);
+        heardStepsRef.current[i] = true;
+      }
+    });
+
+    const hearDuration = sequenceRef.current.length * stepMs;
+
+    if (elapsed >= hearDuration) {
+      clearTimers();
+      beginGapPhase();
+    }
+  }, 16);
+};
+
+const beginGapPhase = () => {
+  setPhase("gap");
+  startTimeRef.current = performance.now();
+  lastStepRef.current = -1;
+  setElapsedMs(0);
+
+  intervalRef.current = setInterval(() => {
+    const now = performance.now();
+    const elapsed = now - startTimeRef.current;
+    setElapsedMs(elapsed);
+
+    const step = Math.floor(elapsed / stepMs);
+
+    if (step !== lastStepRef.current && step >= 0) {
+      if (step % 4 === 0) {
+        playMetronomeClick((step / 4) % 4 === 0);
+      }
+      lastStepRef.current = step;
+    }
+
+    if (elapsed >= hearGapMs) {
+      clearTimers();
+      beginRepeatPhase();
+    }
+  }, 16);
+};
+
+  const beginRepeatPhase = () => {
     setPhase("playing");
     startTimeRef.current = performance.now();
     lastStepRef.current = -1;
+    setElapsedMs(0);
+setResults(new Array(sequenceRef.current.length).fill(null));
+resultsRef.current = new Array(sequenceRef.current.length).fill(null);
+setTiming(new Array(sequenceRef.current.length).fill(null));
+setCombo(0);
+setMaxCombo(0);
+totalCorrectRef.current = 0;
+totalStepsRef.current = sequenceRef.current.filter(Boolean).length;
 
     intervalRef.current = setInterval(() => {
       const now = performance.now();
       const elapsed = now - startTimeRef.current;
       setElapsedMs(elapsed);
 
-      let step = Math.floor((elapsed - startOffset) / beatMs);
+      let step = Math.floor((elapsed - startOffset) / stepMs);
 
       if (step !== lastStepRef.current && step >= 0) {
-        playMetronomeClick(step % 4 === 0);
-        lastStepRef.current = step;
+      if (step % 4 === 0) {
+      playMetronomeClick((step / 4) % 4 === 0);
+      }
+      lastStepRef.current = step;
       }
 
       // ✅ FIX: use ref instead of stale state
@@ -187,13 +269,13 @@ export default function RhythmTrainer() {
     const now = performance.now();
     const elapsed = now - startTimeRef.current - startOffset;
 
-    const stepIndex = Math.floor((elapsed + hitWindow / 2) / beatMs);
+    const stepIndex = Math.floor((elapsed + hitWindow / 2) / stepMs);
     if (stepIndex < 0 || stepIndex >= sequence.length) return;
 
     if (resultsRef.current[stepIndex] !== null) return;
 
     const expected = sequence[stepIndex];
-    const expectedTime = stepIndex * beatMs;
+    const expectedTime = stepIndex * stepMs;
     const diff = elapsed - expectedTime;
 
     let correct = false;
@@ -258,9 +340,9 @@ export default function RhythmTrainer() {
       <h2>Rhythm Drill</h2>
 
       <p style={{ color: "#aaa" }}>
-        Hit when blocks cross the line<br />
-        <b>Kick = A / 1</b> | <b>Snare = L / 2</b>
-      </p>
+    Listen first, then repeat the rhythm from memory<br />
+    <b>Kick = A / 1</b> | <b>Snare = L / 2</b>
+    </p>
 
       <div>
         Difficulty:
@@ -276,8 +358,6 @@ export default function RhythmTrainer() {
         <select value={measures} onChange={(e) => setMeasures(Number(e.target.value))}>
           <option value={1}>1</option>
           <option value={2}>2</option>
-          <option value={4}>4</option>
-          <option value={8}>8</option>
         </select>
       </div>
 
@@ -289,7 +369,9 @@ export default function RhythmTrainer() {
       </div>
 
       {phase === "countdown" && <h1>{countdown}</h1>}
-      {phase === "idle" && <button onClick={start}>Start Drill</button>}
+    {phase === "idle" && <button onClick={start}>Start Hear & Repeat</button>}
+    {phase === "hearing" && <h3>Listen...</h3>}
+    {phase === "gap" && <h3>Get ready...</h3>}
 
       {phase === "playing" && (
         <>
@@ -300,9 +382,7 @@ export default function RhythmTrainer() {
               if (!type) return null;
 
               const y =
-                ((i * beatMs + startOffset - elapsedMs) / 1000) *
-                  scrollSpeed +
-                200;
+                ((i * stepMs + startOffset - elapsedMs) / 1000) * scrollSpeed + 200;
 
               return (
                 <div
