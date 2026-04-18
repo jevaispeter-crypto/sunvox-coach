@@ -25,6 +25,14 @@ const hearGapMs = beatMs * 2;
   const [combo, setCombo] = useState(0);
   const [maxCombo, setMaxCombo] = useState(0);
   const [elapsedMs, setElapsedMs] = useState(0);
+  const [sessionFeedback, setSessionFeedback] = useState(null);
+  const earlyCountRef = useRef(0);
+  const lateCountRef = useRef(0);
+  const perfectCountRef = useRef(0);
+  const missCountRef = useRef(0);
+  const TOTAL_DRILLS = 5;
+  const [drillIndex, setDrillIndex] = useState(0);
+  const [sessionScores, setSessionScores] = useState([]);
 
   const totalStepsRef = useRef(0);
   const totalCorrectRef = useRef(0);
@@ -150,7 +158,23 @@ const hearGapMs = beatMs * 2;
   return pattern;
 };
 
+const resetSessionAnalysis = () => {
+  setSessionFeedback(null);
+  earlyCountRef.current = 0;
+  lateCountRef.current = 0;
+  perfectCountRef.current = 0;
+  missCountRef.current = 0;
+};
+
+const startSession = () => {
+  setDrillIndex(0);
+  setSessionScores([]);
+  resetSessionAnalysis();
+  start();
+};
+
   const start = () => {
+    
     clearTimers();
 
     let fullSequence = [];
@@ -333,7 +357,10 @@ totalStepsRef.current = sequenceRef.current.filter(Boolean).length;
       updated[stepIndex] = label;
       return updated;
     });
-
+    if (label === "Perfect") perfectCountRef.current += 1;
+    if (label === "Early") earlyCountRef.current += 1;
+    if (label === "Late") lateCountRef.current += 1;
+    if (label === "Miss") missCountRef.current += 1;
     if (correct && expected) {
       const weight = label === "Perfect" ? 1 : 0.5;
       totalCorrectRef.current += weight;
@@ -348,13 +375,171 @@ totalStepsRef.current = sequenceRef.current.filter(Boolean).length;
     }
   };
 
-  const finish = () => {
-    setPhase("result");
-    const total = totalStepsRef.current || 1;
-    const correct = totalCorrectRef.current;
-    setScore(Math.min(100, Math.round((correct / total) * 100)));
-  };
+const buildSessionFeedback = (scores) => {
+  const avgScore = Math.round(
+    scores.reduce((sum, s) => sum + s, 0) / scores.length
+  );
 
+  const maxScore = Math.max(...scores);
+  const minScore = Math.min(...scores);
+  const scoreSpread = maxScore - minScore;
+
+  const early = earlyCountRef.current;
+  const late = lateCountRef.current;
+  const perfect = perfectCountRef.current;
+  const miss = missCountRef.current;
+
+  const issues = [];
+  const actions = [];
+
+  // 1. Tempo / control level
+  if (avgScore < 60) {
+    issues.push(
+      `Your average score was ${avgScore}%, which suggests the current BPM is above your reliable control level. At this speed, your errors are likely coming from overload rather than from one isolated rhythm problem.`
+    );
+
+    actions.push(
+      `For the next session, lower BPM by about 10 to 20. A good target would be around ${Math.max(
+        50,
+        safeBpm - 20
+      )}-${Math.max(60, safeBpm - 10)} BPM. Stay there until your average score is above 80%, then increase in small steps of 5 to 10 BPM.`
+    );
+  } else if (avgScore < 80) {
+    issues.push(
+      `Your average score was ${avgScore}%, which means you are close to control, but not yet stable enough to progress safely in tempo.`
+    );
+
+    actions.push(
+      `For the next session, keep the same BPM or reduce it by 5 to 10. Do not increase speed until you can score above 80% consistently across the full session.`
+    );
+  } else {
+    issues.push(
+      `Your average score was ${avgScore}%, which shows that your current tempo is within a workable control range.`
+    );
+
+    actions.push(
+      `For the next session, keep the same BPM once more. If you remain above 80%, increase by 5 to 10 BPM.`
+    );
+  }
+
+  // 2. Consistency
+  if (scoreSpread >= 25) {
+    issues.push(
+      `Your drill scores ranged from ${minScore}% to ${maxScore}%, which suggests inconsistency. This usually means you can execute the task sometimes, but cannot reproduce the same timing quality reliably from one drill to the next.`
+    );
+
+    actions.push(
+      `For the next session, reduce complexity before increasing speed. Use 1-measure drills and aim to keep all 5 drill scores within a much tighter range. The goal is not one strong drill, but repeatable control.`
+    );
+  } else {
+    issues.push(
+      `Your drill scores stayed in a relatively tight range (${minScore}% to ${maxScore}%), which suggests your timing is becoming more stable from drill to drill.`
+    );
+
+    actions.push(
+      `For the next session, keep the same drill length and try to raise the whole session average rather than chasing one perfect run.`
+    );
+  }
+
+  // 3. Early / late explanation
+  if (early >= late + 3) {
+    issues.push(
+      `You hit early more often than late. This usually happens when you anticipate the beat instead of waiting for full visual alignment. Beginners often do this when the tempo feels slightly too fast, because they try to "jump ahead" to keep up.`
+    );
+
+    actions.push(
+      `Next session, focus on letting the moving note fully overlap the target line before tapping. If you still feel the urge to jump early, lower BPM slightly so you can rely on alignment instead of prediction.`
+    );
+  } else if (late >= early + 3) {
+    issues.push(
+      `You hit late more often than early. This usually means you are reacting after the note reaches the line instead of preparing the tap slightly in advance. In practice, your movement starts too late, so the result lands after the beat.`
+    );
+
+    actions.push(
+      `Next session, keep your eyes slightly ahead of the current note and prepare the tap earlier. The goal is not to react faster after the line, but to arrive on the line at the right moment.`
+    );
+  } else {
+    issues.push(
+      `You did not show a strong early or late bias. That usually means your main issue is overall timing consistency rather than a systematic rushing or dragging habit.`
+    );
+
+    actions.push(
+      `Next session, keep the same visual strategy and focus on making every hit follow the same process: track the line, align cleanly, then tap. Consistency matters more than isolated perfect hits.`
+    );
+  }
+
+  // 4. Precision quality
+  if (perfect < early + late && perfect + early + late > 0) {
+    issues.push(
+      `A large share of your successful hits landed in Early/Late rather than Perfect. This means your timing is often approximate: you are close enough to register the note, but not yet aligning precisely with the target moment.`
+    );
+
+    actions.push(
+      `Next session, do not aim only for "successful" hits. Aim for clean center-line alignment. If needed, lower BPM slightly and prioritize precision over finishing fast.`
+    );
+  } else if (perfect > 0) {
+    issues.push(
+      `A healthy share of your successful hits were Perfect, which suggests your visual timing reference is working and that your main next gain will come from maintaining that quality more consistently.`
+    );
+
+    actions.push(
+      `Next session, keep using the same visual cue strategy. Your main objective should be repeating the same quality of hit across the full session, not changing technique.`
+    );
+  }
+
+  // 5. Misses
+  if (miss >= 5) {
+    issues.push(
+      `You also accumulated several full misses. That usually means the drill is crossing your current control threshold: once timing slips, recovery becomes harder and later notes are more likely to be missed entirely.`
+    );
+
+    actions.push(
+      `Next session, simplify one variable before trying again: lower BPM, keep easy difficulty, or reduce to 1 measure. The priority is to avoid cascading misses and rebuild control.`
+    );
+  }
+
+  return {
+    title: "Session Feedback",
+    issues,
+    actions,
+  };
+};
+
+  const finish = () => {
+  const total = totalStepsRef.current || 1;
+  const correct = totalCorrectRef.current;
+  const finalScore = Math.min(100, Math.round((correct / total) * 100));
+
+  setScore(finalScore);
+
+  setSessionScores((prevScores) => {
+    return [...prevScores, finalScore];
+  });
+
+  setDrillIndex((prevIndex) => {
+    const nextIndex = prevIndex + 1;
+
+    if (nextIndex < TOTAL_DRILLS) {
+  setTimeout(() => {
+    start();
+  }, 1000);
+  return nextIndex;
+} else {
+  const finalScores = [...sessionScores, finalScore];
+  setPhase("result");
+  
+
+  return prevIndex;
+}
+  });
+};
+
+useEffect(() => {
+  if (phase === "result" && sessionScores.length === TOTAL_DRILLS) {
+    const feedback = buildSessionFeedback(sessionScores);
+    setSessionFeedback(feedback);
+  }
+}, [phase, sessionScores])
   useEffect(() => {
     const handler = (e) => {
       if (e.key === "a" || e.key === "1") tap("kick");
@@ -391,7 +576,9 @@ totalStepsRef.current = sequenceRef.current.filter(Boolean).length;
         </select>
       </div>
 
-      <div>Combo: {combo} | Max: {maxCombo}</div>
+      <div>
+  Drill {drillIndex + 1} / {TOTAL_DRILLS} | Combo: {combo} | Max: {maxCombo}
+      </div>
 
       <div>
         BPM:
@@ -399,7 +586,7 @@ totalStepsRef.current = sequenceRef.current.filter(Boolean).length;
       </div>
 
       {phase === "countdown" && <h1>{countdown}</h1>}
-    {phase === "idle" && <button onClick={start}>Start Hear & Repeat</button>}
+    {phase === "idle" && <button onClick={startSession}>Start Session</button>}
     {phase === "hearing" && <h3>Listen...</h3>}
     {phase === "gap" && <h3>Get ready...</h3>}
 
@@ -524,12 +711,63 @@ totalStepsRef.current = sequenceRef.current.filter(Boolean).length;
       )}
 
       {phase === "result" && (
-        <>
-          <h3>Score: {score}%</h3>
-          <p>Max Combo: {maxCombo}</p>
-          <button onClick={start}>Retry</button>
-        </>
-      )}
+  <>
+    {sessionScores.length === TOTAL_DRILLS ? (
+      <>
+        <h3>
+          Session Score:{" "}
+          {Math.round(
+            sessionScores.reduce((a, b) => a + b, 0) / sessionScores.length
+          )}
+          %
+        </h3>
+        <p>Drills: {sessionScores.join(" / ")}</p>
+          {sessionFeedback && (
+  <div
+    style={{
+      marginTop: 20,
+      textAlign: "left",
+      maxWidth: 700,
+      marginInline: "auto",
+      background: "#111",
+      border: "1px solid #333",
+      borderRadius: 12,
+      padding: 16,
+    }}
+  >
+    <h3 style={{ marginTop: 0 }}>{sessionFeedback.title}</h3>
+
+    <div style={{ marginBottom: 16 }}>
+      <h4 style={{ marginBottom: 8 }}>1. What happened</h4>
+      {sessionFeedback.issues.map((item, idx) => (
+        <p key={`issue-${idx}`} style={{ margin: "6px 0" }}>
+          - {item}
+        </p>
+      ))}
+    </div>
+
+    <div>
+      <h4 style={{ marginBottom: 8 }}>2. What to do next session</h4>
+      {sessionFeedback.actions.map((item, idx) => (
+        <p key={`action-${idx}`} style={{ margin: "6px 0" }}>
+          - {item}
+        </p>
+      ))}
+    </div>
+  </div>
+)}
+
+      </>
+    ) : (
+      <>
+        <h3>Score: {score}%</h3>
+      </>
+    )}
+
+    <p>Max Combo: {maxCombo}</p>
+    <button onClick={startSession}>Retry Session</button>
+  </>
+)}
     </div>
   );
 }
