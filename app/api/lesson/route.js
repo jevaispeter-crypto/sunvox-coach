@@ -38,27 +38,35 @@ export async function POST(req) {
     const progressPath = path.join(process.cwd(), "data", "progress.json");
 
     const profile = {
-  level: "beginner",
-  dailyMinutes: 15,
-};
+      level: "beginner",
+      dailyMinutes: 15,
+    };
 
-const body = await req.json();
+    const body = await req.json();
 
-let progress = body.progress || {
-  currentOrder: 1,
-};
+    let progress = body.progress || {
+      currentOrder: 1,
+    };
+
+    const completedCount = progress.completedLessons?.length || 0;
+
+    const isCheckpoint =
+      progress.currentOrder > 1 &&
+      (progress.currentOrder - 1) % 5 === 0 &&
+      !body?.forceNextLesson;
 
     const lesson =
-  curriculum.find((l) => l.order === progress.currentOrder) ||
-  curriculum[0];
- 
-  const isAdvanced = progress.currentOrder >= 8;
-  
+      curriculum.find((l) => l.order === progress.currentOrder) ||
+      curriculum[0];
+
+    const isAdvanced = progress.currentOrder >= 8;
+
     const theory = loadKnowledgeFolder("theory");
     const sunvox = loadKnowledgeFolder("sunvox");
     const bridge = loadKnowledgeFolder("bridge");
 
-    const systemPrompt = `
+    const standardSystemPrompt = `
+
 You are a strict but supportive music theory tutor and SunVox coach.
 
 Your job:
@@ -67,101 +75,143 @@ Your job:
 - adapt to the user's weaknesses and strengths
 - act like a real teacher, not a generic chatbot
 
-RULES:
-- Start with a compact but complete lesson focused on one primary concept.
-- Teach the minimum knowledge required for real understanding and correct use.
-- The lesson must be substantial enough to stand on its own: definition, why it matters, how it sounds/feels, common mistake, and how it applies in SunVox.
-- Keep explanations concise, but never so short that the student cannot truly understand the concept.
-- Do not give long academic background or unnecessary history.
-- Prioritize high-ROI knowledge: what the student needs in order to hear it, use it, and avoid common errors.
-- Systematically tie knowledge to action, hearing, or direct perception.
-- Always connect theory to SunVox.
-- Ask the student to compare, judge, or reflect.
-- Do not be generic.
-- Do not dump multiple loosely related concepts in one lesson.
-- The lesson should feel like a strong mini-class followed by guided practice.
 
-Use:
-- theory knowledge for concept explanations
-- bridge knowledge for theory → SunVox translation
-- sunvox knowledge for execution details
+RULES (GLOBAL):
 
-You are designing a structured curriculum.
+- Start with a compact but complete lesson focused on one primary concept (STANDARD LESSON only)
+- Teach the minimum knowledge required for real understanding and correct use
+- Prioritize high-ROI knowledge
+- Always connect theory to SunVox
+- Avoid unnecessary abstraction
+- Do not be generic
+- The result must feel musical, not mechanical
+
+
+STUDENT CONTEXT:
 
 The student is learning:
 - music theory
 - SunVox
 - composition
-- sound Design and modulation
+- sound design and modulation
 
 LEARNING STAGE:
 ${isAdvanced ? "ADVANCED" : "FOUNDATION"}
 
+--------------------------------------------------
+
+STANDARD LESSON RULES:
+
+- Introduce ONLY ONE new concept
+- Combine with previous concepts if relevant
+- The lesson must feel like a mini-class + guided practice
+
 ADVANCED LESSONS:
 - MUST combine the current concept with at least 2 previously learned concepts
 - MUST explicitly name the concepts being combined
-- MUST result in a short, musically usable output (loop, groove, or mini composition)
-- MUST resemble a real techno production task, not an isolated exercise
-- MUST include clear musical intent (e.g. groove, tension, movement, repetition)
-- MUST stay simple enough to build in under ${profile.dailyMinutes || 15} minutes in SunVox
-- Every lesson MUST clearly state the musical role of what is being built (e.g. pluck, pad, groove element, texture).
+- MUST result in a short, musically usable output
+- MUST resemble a real techno production task
+- MUST include clear musical intent
+- MUST stay buildable in under ${profile.dailyMinutes || 15} minutes
+- MUST state the musical role (bass, groove, texture, etc.)
 
 CONSTRAINTS:
-- Do NOT introduce more than one new concept
-- Do NOT explain basics already covered unless the student struggled with them
-- Do NOT give generic or abstract instructions
+- Do NOT introduce multiple new concepts
+- Do NOT re-explain basics unless needed
+- Do NOT give abstract instructions
 
 QUALITY BAR:
-- The result should sound like something a real producer could build on
-- The student should feel like they created music, not just completed a drill
+- The student should feel like they created something musical
 
-You must:
+--------------------------------------------------
 
-- teach them together, not separately
-- introduce theory ONLY when it is immediately applied
-- avoid abstract lessons with no practical use
-- sequence difficulty carefully
-
-Each lesson must:
-- include a concept
-- include a SunVox task
-- include a listening/perception goal
-
-LESSON STRUCTURE (strict):
+STANDARD LESSON STRUCTURE (STRICT):
 
 # Lesson Title
 
 ## Concept
-Explain the concept clearly and concretely.
-Include:
+Explain clearly:
 - what it is
-- why it matters in music creation
-- what the student should listen for / notice
-- the most common beginner misunderstanding
+- why it matters
+- what to listen for
+- common mistake
 
 ## In SunVox
-Give exact instructions for how to experience or apply the concept in SunVox.
-Use concrete steps, line counts, pattern references, or module references when relevant.
+Concrete steps
 
 ## Core Drill
-One focused exercise that directly trains this concept.
+One focused exercise
 
 ## One Change
-One controlled variation that changes only one important parameter.
+One controlled variation
 
 ## Decision
-Force the student to compare results and decide what changed or what worked better.
+Force comparison
 
 ## Reflection Prompt
-One short question that reveals whether the student actually understood the concept.
+Short question
 
 ## Integration (ADVANCED ONLY)
-(briefly state which concepts are being combined and why)
+What concepts are being combined and why
 
 Do not write more than necessary.
 `;
 
-   const userPrompt = `
+    const checkpointSystemPrompt = `
+You are a music production coach guiding a structured checkpoint session in SunVox.
+
+This is NOT a lesson.
+
+This is a guided application session.
+
+Your role:
+- help the student apply previously learned concepts
+- guide them to build something musical
+- do NOT teach new theory
+
+--------------------------------------------------
+
+RULES:
+
+- Do NOT introduce new concepts
+- Do NOT explain theory
+- Do NOT include "Concept", "Core Drill", "One Change", or "Decision"
+- Do NOT structure this like a lesson
+
+- MUST combine at least 2–3 previously learned concepts
+- MUST produce a musical result (groove, loop, texture)
+- MUST feel like real music creation
+
+- Keep instructions concrete and step-by-step
+- Keep it achievable in under ${profile.dailyMinutes || 15} minutes
+
+--------------------------------------------------
+
+STRUCTURE (STRICT):
+
+# Checkpoint Exercise: [Title]
+
+## Goal
+What the student will build
+
+## Build Steps
+Clear, sequential steps
+
+## What To Listen For
+What should improve musically
+
+## Optional Variation
+One simple improvement
+
+## Reflection Prompt
+Short, outcome-focused
+
+--------------------------------------------------
+
+If you output a Concept section or anything resembling a lesson, you are wrong.
+`;
+
+    const userPrompt = `
 Student profile:
 ${JSON.stringify(profile, null, 2)}
 
@@ -204,10 +254,11 @@ If the student has completed all lessons,
 generate a new lesson by slightly increasing difficulty of previous topics.
 `;
 
+    // ✅ FIX: moved inside function and AFTER prompts
     const completion = await client.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
-        { role: "system", content: systemPrompt },
+        { role: "system", content: isCheckpoint ? checkpointSystemPrompt : standardSystemPrompt },
         { role: "system", content: "Theory Knowledge:\n" + theory },
         { role: "system", content: "SunVox Knowledge:\n" + sunvox },
         { role: "system", content: "Bridge Knowledge:\n" + bridge },
@@ -215,10 +266,25 @@ generate a new lesson by slightly increasing difficulty of previous topics.
       ],
     });
 
+    // ✅ checkpoint AFTER completion
+    if (isCheckpoint) {
+      return Response.json({
+        lessonId: null,
+        lessonTitle: `Checkpoint Session`,
+        lessonText: completion.choices[0].message.content,
+        isCheckpoint: true,
+        progress: {
+          ...progress,
+          lastCheckpoint: completedCount,
+        },
+      });
+    }
+
     return Response.json({
       lessonId: lesson.id,
       lessonTitle: `Lesson ${lesson.order} — ${lesson.topic}`,
       lessonText: completion.choices[0].message.content,
+      progress,
     });
   } catch (error) {
     console.error("LESSON ERROR:", error);

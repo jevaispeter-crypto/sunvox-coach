@@ -14,9 +14,10 @@ export default function Home() {
   const [struggledWith, setStruggledWith] = useState("");
   const [loading, setLoading] = useState(false);
   const [currentLessonId, setCurrentLessonId] = useState(null);
+  const [inCheckpoint, setInCheckpoint] = useState(false);
+  const [forceNext, setForceNext] = useState(false);
 
-  // 🔥 NEW: mode switch
-  const [mode, setMode] = useState("chat"); // "chat" | "drill"
+  const [mode, setMode] = useState("chat");
 
   const chatEndRef = useRef(null);
 
@@ -115,43 +116,66 @@ export default function Home() {
   };
 
   const getLesson = async () => {
-    if (loading) return;
-    setLoading(true);
+  if (loading) return;
+  setLoading(true);
 
-    try {
-      const storedProgress = getStoredProgress();
+  try {
+    const storedProgress = getStoredProgress();
 
-      const res = await fetch("/api/lesson", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          progress: storedProgress,
-        }),
-      });
+    const res = await fetch("/api/lesson", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        progress: storedProgress,
+        forceNextLesson: forceNext,
+      }),
+    });
 
-      const data = await res.json();
+    const data = await res.json();
 
-      if (!res.ok) {
-        appendMessage("assistant", `Error: ${data.error || "Lesson failed"}`);
-        return;
-      }
-
-      setProgress(storedProgress);
-      setLesson(data);
-      setCurrentLessonId(progress?.currentOrder || data.lessonId);
-
-      appendMessage("assistant", `## ${data.lessonTitle}`);
-      appendMessage("assistant", data.lessonText || "No lesson returned.");
-    } catch (error) {
-      appendMessage("assistant", `Error: ${error.message}`);
-    } finally {
-      setLoading(false);
+    if (!res.ok) {
+      appendMessage("assistant", `Error: ${data.error || "Lesson failed"}`);
+      return;
     }
-  };
+
+    // 🔥 FIX: reset forceNext AFTER using it once
+    if (forceNext) {
+      setForceNext(false);
+    }
+
+    setProgress(storedProgress);
+    setLesson(data);
+    setInCheckpoint(data.isCheckpoint || false);
+    setCurrentLessonId(progress?.currentOrder || data.lessonId);
+
+    appendMessage("assistant", `## ${data.lessonTitle}`);
+    appendMessage("assistant", data.lessonText || "No lesson returned.");
+  } catch (error) {
+    appendMessage("assistant", `Error: ${error.message}`);
+  } finally {
+    setLoading(false);
+  }
+};
 
   const completeLesson = async (feltEasy) => {
+    const checkpointMode = inCheckpoint || lesson?.isCheckpoint === true;
+
+    // 🔥 CHECKPOINT MODE (FIXED: NO AUTO-FETCH)
+    if (checkpointMode) {
+      if (feltEasy) {
+        setForceNext(true);     // next fetch → lesson 6
+      } else {
+        setForceNext(false);    // next fetch → checkpoint again
+      }
+
+      setInCheckpoint(false);
+      setLesson(null);          // return to idle state
+      return;
+    }
+
+    // 🔽 NORMAL LESSON FLOW
     if (!lesson || typeof lesson.lessonId !== "number") {
       console.error("Invalid lesson state:", lesson);
       return;
@@ -211,24 +235,8 @@ export default function Home() {
   };
 
   return (
-    <main
-      style={{
-        padding: 20,
-        maxWidth: 1000,
-        margin: "0 auto",
-        fontFamily: "system-ui, sans-serif",
-      }}
-    >
-      <h1
-        style={{
-          textAlign: "center",
-          marginBottom: 10,
-          color: "#000",
-          WebkitTextStroke: "0.5px white",
-          textShadow: "0 0 10px rgba(255,255,255,0.3)",
-          fontWeight: "bold",
-        }}
-      >
+    <main style={{ padding: 20, maxWidth: 1000, margin: "0 auto", fontFamily: "system-ui, sans-serif" }}>
+      <h1 style={{ textAlign: "center", marginBottom: 10, color: "#000", WebkitTextStroke: "0.5px white", textShadow: "0 0 10px rgba(255,255,255,0.3)", fontWeight: "bold" }}>
         🎛 S U N V O X | C O A C H
       </h1>
 
@@ -238,87 +246,30 @@ export default function Home() {
         </p>
       )}
 
-      {/* 🔥 TOP BUTTONS */}
       <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
-        <button
-          onClick={getLesson}
-          disabled={loading}
-          style={{
-            padding: "12px 16px",
-            borderRadius: 10,
-            border: "none",
-            background: "#0070f3",
-            color: "white",
-            fontWeight: "bold",
-            opacity: loading ? 0.6 : 1,
-          }}
-        >
+        <button onClick={getLesson} disabled={loading} style={{ padding: "12px 16px", borderRadius: 10, border: "none", background: "#0070f3", color: "white", fontWeight: "bold", opacity: loading ? 0.6 : 1 }}>
           {loading ? "Loading..." : "Get Today’s Lesson"}
         </button>
 
-        <button
-          onClick={clearChat}
-          disabled={loading}
-          style={{
-            padding: "12px 16px",
-            borderRadius: 10,
-            border: "none",
-            background: "#444",
-            color: "white",
-            opacity: loading ? 0.6 : 1,
-          }}
-        >
+        <button onClick={clearChat} disabled={loading} style={{ padding: "12px 16px", borderRadius: 10, border: "none", background: "#444", color: "white", opacity: loading ? 0.6 : 1 }}>
           Clear Chat
         </button>
 
-        {/* 🔥 DRILL BUTTON */}
-        <button
-          onClick={() => setMode("drill")}
-          style={{
-            padding: "12px 16px",
-            borderRadius: 10,
-            border: "none",
-            background: "#9b59b6",
-            color: "white",
-            fontWeight: "bold",
-          }}
-        >
+        <button onClick={() => setMode("drill")} style={{ padding: "12px 16px", borderRadius: 10, border: "none", background: "#9b59b6", color: "white", fontWeight: "bold" }}>
           Start Drill
         </button>
 
         {mode === "drill" && (
-          <button
-            onClick={() => setMode("chat")}
-            style={{
-              padding: "12px 16px",
-              borderRadius: 10,
-              border: "none",
-              background: "#222",
-              color: "white",
-            }}
-          >
+          <button onClick={() => setMode("chat")} style={{ padding: "12px 16px", borderRadius: 10, border: "none", background: "#222", color: "white" }}>
             Back
           </button>
         )}
       </div>
 
-      {/* 🔥 CHAT MODE */}
       {mode === "chat" && (
         <>
-          <div
-            style={{
-              minHeight: 420,
-              padding: 20,
-              marginBottom: 20,
-              borderRadius: 16,
-              overflowY: "auto",
-              background: "rgba(10, 10, 10, 0.75)",
-              border: "1px solid #222",
-            }}
-          >
-            {messages.length === 0 && (
-              <p style={{ color: "#ddd" }}>Start your training session.</p>
-            )}
+          <div style={{ minHeight: 420, padding: 20, marginBottom: 20, borderRadius: 16, overflowY: "auto", background: "rgba(10, 10, 10, 0.75)", border: "1px solid #222" }}>
+            {messages.length === 0 && <p style={{ color: "#ddd" }}>Start your training session.</p>}
 
             {messages.map((m, i) => (
               <div key={i} style={{ marginBottom: 12 }}>
@@ -334,12 +285,7 @@ export default function Home() {
 
           {!lesson && (
             <div style={{ display: "flex", gap: 8 }}>
-              <input
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-                style={{ flex: 1 }}
-              />
+              <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && sendMessage()} style={{ flex: 1 }} />
               <button onClick={sendMessage} disabled={loading}>
                 Send
               </button>
@@ -348,44 +294,15 @@ export default function Home() {
 
           {lesson && (
             <div style={{ marginTop: 12 }}>
-              <textarea
-                placeholder="Write your answer to the reflection prompt here..."
-                value={reflection}
-                onChange={(e) => setReflection(e.target.value)}
-                style={{ width: "100%", marginBottom: 8 }}
-              />
-
-              <input
-                placeholder="What did you struggle with?"
-                value={struggledWith}
-                onChange={(e) => setStruggledWith(e.target.value)}
-                style={{ width: "100%", marginBottom: 8 }}
-              />
+              <textarea placeholder="Write your answer..." value={reflection} onChange={(e) => setReflection(e.target.value)} style={{ width: "100%", marginBottom: 8 }} />
+              <input placeholder="What did you struggle with?" value={struggledWith} onChange={(e) => setStruggledWith(e.target.value)} style={{ width: "100%", marginBottom: 8 }} />
 
               <div style={{ display: "flex", gap: 12, marginTop: 10 }}>
-                <button onClick={() => completeLesson(true)}
-                  style={{
-                    padding: "12px 16px",
-                    borderRadius: 10,
-                    border: "none",
-                    background: "#27ae60",
-                    color: "white",
-                    fontWeight: "bold",
-                  }}
-                >
+                <button onClick={() => completeLesson(true)} style={{ padding: "12px 16px", borderRadius: 10, border: "none", background: "#27ae60", color: "white", fontWeight: "bold" }}>
                   ✅ Got it — Next Lesson
                 </button>
 
-                <button onClick={() => completeLesson(false)}
-                  style={{
-                      padding: "12px 16px",
-                      borderRadius: 10,
-                      border: "none",
-                      background: "#c0392b",
-                      color: "white",
-                      fontWeight: "bold",
-                    }}
-                  >
+                <button onClick={() => completeLesson(false)} style={{ padding: "12px 16px", borderRadius: 10, border: "none", background: "#c0392b", color: "white", fontWeight: "bold" }}>
                   🔁 Still unclear — Go deeper
                 </button>
               </div>
@@ -394,17 +311,8 @@ export default function Home() {
         </>
       )}
 
-      {/* 🔥 DRILL MODE */}
       {mode === "drill" && (
-        <div
-          style={{
-            marginTop: 20,
-            padding: 20,
-            borderRadius: 16,
-            background: "rgba(20,20,20,0.9)",
-            border: "1px solid #333",
-          }}
-        >
+        <div style={{ marginTop: 20, padding: 20, borderRadius: 16, background: "rgba(20,20,20,0.9)", border: "1px solid #333" }}>
           <RhythmTrainer />
         </div>
       )}
