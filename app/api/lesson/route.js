@@ -51,7 +51,9 @@ let progress = body.progress || {
     const lesson =
   curriculum.find((l) => l.order === progress.currentOrder) ||
   curriculum[0];
-
+ 
+  const isAdvanced = progress.currentOrder >= 8;
+  
     const theory = loadKnowledgeFolder("theory");
     const sunvox = loadKnowledgeFolder("sunvox");
     const bridge = loadKnowledgeFolder("bridge");
@@ -66,7 +68,7 @@ Your job:
 - act like a real teacher, not a generic chatbot
 
 RULES:
-- Start with a compact but complete lesson on ONE concept.
+- Start with a compact but complete lesson focused on one primary concept.
 - Teach the minimum knowledge required for real understanding and correct use.
 - The lesson must be substantial enough to stand on its own: definition, why it matters, how it sounds/feels, common mistake, and how it applies in SunVox.
 - Keep explanations concise, but never so short that the student cannot truly understand the concept.
@@ -90,6 +92,28 @@ The student is learning:
 - music theory
 - SunVox
 - composition
+- sound Design and modulation
+
+LEARNING STAGE:
+${isAdvanced ? "ADVANCED" : "FOUNDATION"}
+
+ADVANCED LESSONS:
+- MUST combine the current concept with at least 2 previously learned concepts
+- MUST explicitly name the concepts being combined
+- MUST result in a short, musically usable output (loop, groove, or mini composition)
+- MUST resemble a real techno production task, not an isolated exercise
+- MUST include clear musical intent (e.g. groove, tension, movement, repetition)
+- MUST stay simple enough to build in under ${profile.dailyMinutes || 15} minutes in SunVox
+- Every lesson MUST clearly state the musical role of what is being built (e.g. pluck, pad, groove element, texture).
+
+CONSTRAINTS:
+- Do NOT introduce more than one new concept
+- Do NOT explain basics already covered unless the student struggled with them
+- Do NOT give generic or abstract instructions
+
+QUALITY BAR:
+- The result should sound like something a real producer could build on
+- The student should feel like they created music, not just completed a drill
 
 You must:
 
@@ -131,6 +155,9 @@ Force the student to compare results and decide what changed or what worked bett
 ## Reflection Prompt
 One short question that reveals whether the student actually understood the concept.
 
+## Integration (ADVANCED ONLY)
+(briefly state which concepts are being combined and why)
+
 Do not write more than necessary.
 `;
 
@@ -159,7 +186,7 @@ ADAPTATION RULES:
 - Use reflection and struggledWith fields to adjust how you teach.
 
 Each lesson MUST:
-- include one concept only
+- focus on ONE primary concept
 - include a SunVox task
 - include a perception goal
 - include a forced comparison
