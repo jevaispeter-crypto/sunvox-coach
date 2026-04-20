@@ -7,6 +7,7 @@ import RhythmTrainer from "@/components/RhythmTrainer";
 
 export default function Home() {
   const [messages, setMessages] = useState([]);
+  const [progress, setProgress] = useState({ currentOrder: 1 });
   const [input, setInput] = useState("");
   const [lesson, setLesson] = useState(null);
   const [reflection, setReflection] = useState("");
@@ -30,20 +31,33 @@ export default function Home() {
 
   useEffect(() => {
     try {
-      const saved = localStorage.getItem("messages");
-      if (!saved) return;
-      const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed)) {
-        const cleaned = parsed.filter(
-          (m) =>
-            m &&
-            (m.role === "user" || m.role === "assistant") &&
-            typeof m.content === "string"
-        );
-        setMessages(cleaned);
+      const savedMessages = localStorage.getItem("messages");
+      if (savedMessages) {
+        const parsed = JSON.parse(savedMessages);
+        if (Array.isArray(parsed)) {
+          const cleaned = parsed.filter(
+            (m) =>
+              m &&
+              (m.role === "user" || m.role === "assistant") &&
+              typeof m.content === "string"
+          );
+          setMessages(cleaned);
+        }
       }
     } catch {
       localStorage.removeItem("messages");
+    }
+
+    try {
+      const savedProgress = localStorage.getItem("progress");
+      if (savedProgress) {
+        const parsed = JSON.parse(savedProgress);
+        if (parsed && typeof parsed === "object") {
+          setProgress(parsed);
+        }
+      }
+    } catch {
+      localStorage.removeItem("progress");
     }
   }, []);
 
@@ -79,10 +93,24 @@ export default function Home() {
       }
 
       appendMessage("assistant", data.reply || "No reply received.");
+
+      if (data.progress) {
+        setProgress(data.progress);
+        localStorage.setItem("progress", JSON.stringify(data.progress));
+      }
     } catch (error) {
       appendMessage("assistant", `Error: ${error.message}`);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const getStoredProgress = () => {
+    try {
+      const saved = localStorage.getItem("progress");
+      return saved ? JSON.parse(saved) : { currentOrder: 1 };
+    } catch {
+      return { currentOrder: 1 };
     }
   };
 
@@ -91,8 +119,16 @@ export default function Home() {
     setLoading(true);
 
     try {
+      const storedProgress = getStoredProgress();
+
       const res = await fetch("/api/lesson", {
         method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          progress: storedProgress,
+        }),
       });
 
       const data = await res.json();
@@ -102,10 +138,11 @@ export default function Home() {
         return;
       }
 
+      setProgress(storedProgress);
       setLesson(data);
-      setCurrentLessonId(data.lessonId ?? null);
+      setCurrentLessonId(progress?.currentOrder || data.lessonId);
 
-      appendMessage("assistant", "--- NEW LESSON ---");
+      appendMessage("assistant", `## ${data.lessonTitle}`);
       appendMessage("assistant", data.lessonText || "No lesson returned.");
     } catch (error) {
       appendMessage("assistant", `Error: ${error.message}`);
@@ -123,6 +160,8 @@ export default function Home() {
     setLoading(true);
 
     try {
+      const latestProgress = getStoredProgress();
+
       const res = await fetch("/api/complete", {
         method: "POST",
         headers: {
@@ -133,15 +172,22 @@ export default function Home() {
           reflection,
           feltEasy,
           struggledWith,
+          progress: latestProgress,
         }),
       });
 
       const data = await res.json();
 
       if (!res.ok) {
-        appendMessage("assistant", `Error: ${data.error || "Completion failed"}`);
+        appendMessage(
+          "assistant",
+          `Error: ${data.error || "Completion failed"}`
+        );
         return;
       }
+
+      setProgress(data.progress);
+      localStorage.setItem("progress", JSON.stringify(data.progress));
 
       appendMessage(
         "assistant",
@@ -297,6 +343,52 @@ export default function Home() {
               <button onClick={sendMessage} disabled={loading}>
                 Send
               </button>
+            </div>
+          )}
+
+          {lesson && (
+            <div style={{ marginTop: 12 }}>
+              <textarea
+                placeholder="Write your answer to the reflection prompt here..."
+                value={reflection}
+                onChange={(e) => setReflection(e.target.value)}
+                style={{ width: "100%", marginBottom: 8 }}
+              />
+
+              <input
+                placeholder="What did you struggle with?"
+                value={struggledWith}
+                onChange={(e) => setStruggledWith(e.target.value)}
+                style={{ width: "100%", marginBottom: 8 }}
+              />
+
+              <div style={{ display: "flex", gap: 12, marginTop: 10 }}>
+                <button onClick={() => completeLesson(true)}
+                  style={{
+                    padding: "12px 16px",
+                    borderRadius: 10,
+                    border: "none",
+                    background: "#27ae60",
+                    color: "white",
+                    fontWeight: "bold",
+                  }}
+                >
+                  ✅ Got it — Next Lesson
+                </button>
+
+                <button onClick={() => completeLesson(false)}
+                  style={{
+                      padding: "12px 16px",
+                      borderRadius: 10,
+                      border: "none",
+                      background: "#c0392b",
+                      color: "white",
+                      fontWeight: "bold",
+                    }}
+                  >
+                  🔁 Still unclear — Go deeper
+                </button>
+              </div>
             </div>
           )}
         </>

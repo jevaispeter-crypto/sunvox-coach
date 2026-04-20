@@ -1,38 +1,52 @@
-# Module System & Sound Design
+# Module System \& Sound Design
 
-## What is a Module?
+\## What is a Module?
 
 A unit that:
-- Generates sound
-- Processes sound
-- Routes signal
 
-## Types
+* Generates sound
+* Processes sound
+* Routes signal
 
-- Generator (synthesis)
-- Sampler (sample playback)
-- Effects (echo, filter, etc.)
-- Output
+\## Types
 
-## Signal Flow
+* Generator (synthesis)
+* Sampler (sample playback)
+* Effects (echo, filter, etc.)
+* Output
 
-- Must connect modules manually
-- Direction matters
+\## Signal Flow
 
-## Key Rule
+* Must connect modules manually
+* Direction matters
+
+\## Key Rule
 
 Source → Effect → Output
 
-## Deleting Modules
+\## Deleting Modules
 
-- Right-click → Delete
-- Backspace
+* Right-click → Delete
+* Backspace
 
-## Loading Modules
+\## Loading Modules
 
-- Load from Instruments folder
+* Load from Instruments folder
 
-## Important Insight
+\## Important Insight
 
 SunVox is NOT track-based  
 → it is signal-based
+
+\## What shapes sound?
+
+\- Oscillator (waveform)
+
+\- Envelope (ADSR)
+
+\- Filter (cutoff/resonance)
+
+\- Modulation (LFO)
+
+
+

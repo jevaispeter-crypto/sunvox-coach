@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { curriculum } from "@/lib/curriculum";
 
 const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -15,15 +16,13 @@ export async function POST(req) {
       dailyMinutes: 15,
     };
 
-    let progress = global.progress || {
-      currentLesson: 1,
+    let progress = body.progress || {
+      currentOrder: 1,
       completedLessons: [],
       weaknesses: [],
       strengths: [],
       reflections: [],
     };
-
-    global.progress = progress;
 
     const lastUserMessage =
       [...messages]
@@ -39,38 +38,36 @@ export async function POST(req) {
 
     const goToLessonMatch = lower.match(/lesson\s*(\d+)/);
 
-    if (
-      lower.includes("go to lesson") ||
-      lower.includes("jump to lesson") ||
-      lower.includes("move to lesson")
-    ) {
-      if (goToLessonMatch) {
-        const targetLesson = parseInt(goToLessonMatch[1]);
+if (
+  lower.includes("go to lesson") ||
+  lower.includes("jump to lesson") ||
+  lower.includes("move to lesson")
+) {
+  if (goToLessonMatch) {
+    const targetId = parseInt(goToLessonMatch[1]);
 
-        if (!isNaN(targetLesson)) {
-          progress.currentLesson = targetLesson;
+    if (!isNaN(targetId)) {
+      const target = curriculum.find((l) => l.id === targetId);
 
-          progress.completedLessons = progress.completedLessons || [];
+      if (target) {
+        progress.currentOrder = target.order;
 
-          // ✅ SAFE loop (no Array.from bug)
-          for (let j = 1; j <= targetLesson; j++) {
-            if (!progress.completedLessons.includes(j)) {
-              progress.completedLessons.push(j);
-            }
-          }
+        progress.completedLessons = [];
 
-          global.progress = progress;
+        global.progress = progress;
 
-          return Response.json({
-            reply: `Moved you to lesson ${targetLesson}. You can continue from there.`,
-          });
-        }
+        return Response.json({
+          reply: `Moved you to lesson ${targetId}. Click "Get Today’s Lesson".`,
+          progress,
+        });
       }
-
-      return Response.json({
-        reply: "Tell me which lesson number you want to move to.",
-      });
     }
+  }
+
+  return Response.json({
+    reply: "Tell me which lesson number you want to move to.",
+  });
+}
 
     // =========================
     // 🧠 MODE DETECTION

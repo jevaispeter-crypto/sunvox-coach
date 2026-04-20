@@ -10,23 +10,50 @@ Development means changing it while preserving identity.
 
 ## What the student must understand
 
-- motive
-- repetition
-- sequence
-- rhythmic variation
-- intervallic variation
-- fragmentation
-- phrase shape
-- question and answer
+* motive
+* repetition
+* sequence
+* rhythmic variation
+* intervallic variation
+* fragmentation
+* phrase shape
+* question and answer
 
 ## Why this matters
 
 Weak music often introduces too many ideas.
 Strong music often grows from one small cell.
 
+
+
+\## Repetition vs Variation
+
+Music needs both repetition and variation.
+
+Repetition:
+
+\- creates familiarity
+
+\- helps the listener recognize the idea
+
+Variation:
+
+\- creates interest
+
+\- prevents stagnation
+
+Too much repetition → boring  
+
+Too much variation → chaotic  
+
+Strong composition balances both.
+
+
+
 ## Core drills
 
 ### Drill 1 — 3-note motive
+
 Write 3 notes with a rhythm.
 
 Repeat exactly once.
@@ -35,27 +62,32 @@ Goal:
 establish identity
 
 ### Drill 2 — One-change variation
+
 Repeat the motive but change only one of:
-- pitch
-- rhythm
-- starting point
+
+* pitch
+* rhythm
+* starting point
 
 Goal:
 keep identity while creating motion
 
 ### Drill 3 — Sequence
+
 Move the same pattern up or down.
 
 Goal:
 hear pattern transfer
 
 ### Drill 4 — Fragmentation
+
 Take only the first half of the motive and repeat it.
 
 Goal:
 increase focus and intensity
 
 ### Drill 5 — Question and answer
+
 Write one phrase that ends openly.
 Write a second phrase that answers it.
 
@@ -65,17 +97,19 @@ hear phrase logic
 ## Contrast prompts
 
 Ask:
-- which version still sounds like the same idea?
-- when does the idea become unrecognizable?
-- which ending feels like a question?
-- which answer feels strongest?
+
+* which version still sounds like the same idea?
+* when does the idea become unrecognizable?
+* which ending feels like a question?
+* which answer feels strongest?
 
 ## Common mistakes
 
-- changing too much at once
-- repeating without variation
-- introducing new ideas before developing the first one
+* changing too much at once
+* repeating without variation
+* introducing new ideas before developing the first one
 
 ## Retrieval tags
 
 motive, phrase, development, sequence, fragmentation, variation
+

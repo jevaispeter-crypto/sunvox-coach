@@ -2,14 +2,15 @@
 
 This knowledge base is derived from a structured tutorial series on SunVox.
 
-## Core Concepts
+\## Core Concepts
 
 SunVox is:
-- A modular music tracker
-- Pattern-based (grid sequencing)
-- Sample + synthesis hybrid
 
-## Key Learning Areas
+* A modular music tracker
+* Pattern-based (grid sequencing)
+* Sample + synthesis hybrid
+
+\## Key Learning Areas
 
 1. App navigation and interface
 2. Tracker workflow and patterns
@@ -19,10 +20,23 @@ SunVox is:
 6. Timing system (ticks, BPM, grids)
 7. Composition techniques
 
-## Mental Model
+\## Mental Model
 
-- Sound = modules + connections
-- Music = patterns + timing grid
-- Control = effects + parameters
+* Sound = modules + connections
+* Music = patterns + timing grid
+* Control = effects + parameters
 
 This KB is structured for teaching, not chronological playback.
+
+
+
+\##**Skills Trained**
+
+\- Navigation fluency
+
+\- Pattern timing control
+
+\- Signal flow understanding
+
+\- Sound shaping (missing)
+

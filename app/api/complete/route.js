@@ -21,24 +21,30 @@ export async function POST(req) {
     const struggledWith =
       typeof body.struggledWith === "string" ? body.struggledWith : "";
 
-    // =========================
-    // 🔥 IN-MEMORY STORAGE (VERCEL SAFE)
-    // =========================
+    const incomingProgress =
+      typeof body.progress === "object" && body.progress !== null
+        ? body.progress
+        : null;
 
-    let progress = global.progress;
+    const currentLesson =
+      curriculum.find((l) => l.id === lessonId) || curriculum[0];
 
-    if (!progress) {
-      progress = {
-        currentLesson: 1,
-        completedLessons: [],
-        weaknesses: [],
-        strengths: [],
-        reflections: [],
-      };
-    }
+    const currentOrder = currentLesson.order;
 
     // =========================
-    // ✅ ENSURE STRUCTURE (VERY IMPORTANT)
+    // 🔥 USE CLIENT PROGRESS (FIX)
+    // =========================
+
+    let progress = incomingProgress || {
+      currentOrder: 1,
+      completedLessons: [],
+      weaknesses: [],
+      strengths: [],
+      reflections: [],
+    };
+
+    // =========================
+    // ✅ ENSURE STRUCTURE
     // =========================
 
     if (!Array.isArray(progress.completedLessons)) {
@@ -82,25 +88,24 @@ export async function POST(req) {
     // =========================
 
     if (feltEasy) {
-      const currentIndex = curriculum.findIndex((l) => l.id === lessonId);
+      const nextLesson = curriculum.find(
+        (l) => l.order === currentOrder + 1
+      );
 
-      if (currentIndex >= 0 && currentIndex < curriculum.length - 1) {
-        progress.currentLesson = curriculum[currentIndex + 1].id;
+      if (nextLesson) {
+        progress.currentOrder = nextLesson.order;
       }
     } else {
-      // repeat same lesson
-      progress.currentLesson = lessonId;
+      progress.currentOrder = currentOrder;
     }
 
     // =========================
-    // 💾 SAVE TO GLOBAL MEMORY
+    // ❌ REMOVE global.progress dependency
     // =========================
-
-    global.progress = progress;
 
     return Response.json({
       ok: true,
-      nextLesson: progress.currentLesson,
+      nextLesson: progress.currentOrder,
       progress,
     });
   } catch (error) {

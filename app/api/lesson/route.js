@@ -32,7 +32,7 @@ function loadKnowledgeFolder(folderName) {
   return content;
 }
 
-export async function POST() {
+export async function POST(req) {
   try {
     const profilePath = path.join(process.cwd(), "data", "profile.json");
     const progressPath = path.join(process.cwd(), "data", "progress.json");
@@ -42,13 +42,15 @@ export async function POST() {
   dailyMinutes: 15,
 };
 
-let progress = global.progress || {
-  currentLesson: 1,
+const body = await req.json();
+
+let progress = body.progress || {
+  currentOrder: 1,
 };
 
-global.progress = progress;
-
-    const lesson = curriculum.find((l) => l.id === progress.currentLesson) || curriculum[0];
+    const lesson =
+  curriculum.find((l) => l.order === progress.currentOrder) ||
+  curriculum[0];
 
     const theory = loadKnowledgeFolder("theory");
     const sunvox = loadKnowledgeFolder("sunvox");
@@ -64,13 +66,18 @@ Your job:
 - act like a real teacher, not a generic chatbot
 
 RULES:
-- do not start with abstract definitions
-- start with action, hearing, or direct perception
-- keep lessons practical
-- use theory to explain what matters, not to show off
-- always connect theory to SunVox
-- ask the student to compare, judge, or reflect
-- do not be generic
+- Start with a compact but complete lesson on ONE concept.
+- Teach the minimum knowledge required for real understanding and correct use.
+- The lesson must be substantial enough to stand on its own: definition, why it matters, how it sounds/feels, common mistake, and how it applies in SunVox.
+- Keep explanations concise, but never so short that the student cannot truly understand the concept.
+- Do not give long academic background or unnecessary history.
+- Prioritize high-ROI knowledge: what the student needs in order to hear it, use it, and avoid common errors.
+- Systematically tie knowledge to action, hearing, or direct perception.
+- Always connect theory to SunVox.
+- Ask the student to compare, judge, or reflect.
+- Do not be generic.
+- Do not dump multiple loosely related concepts in one lesson.
+- The lesson should feel like a strong mini-class followed by guided practice.
 
 Use:
 - theory knowledge for concept explanations
@@ -100,26 +107,29 @@ LESSON STRUCTURE (strict):
 
 # Lesson Title
 
-## Start Here
-(one immediate action)
-
-## What To Notice
-(1-3 lines)
+## Concept
+Explain the concept clearly and concretely.
+Include:
+- what it is
+- why it matters in music creation
+- what the student should listen for / notice
+- the most common beginner misunderstanding
 
 ## In SunVox
-(exact instructions with line numbers when relevant)
+Give exact instructions for how to experience or apply the concept in SunVox.
+Use concrete steps, line counts, pattern references, or module references when relevant.
 
 ## Core Drill
-(single main drill)
+One focused exercise that directly trains this concept.
 
 ## One Change
-(single controlled variation)
+One controlled variation that changes only one important parameter.
 
 ## Decision
-(force the student to decide what changed)
+Force the student to compare results and decide what changed or what worked better.
 
 ## Reflection Prompt
-(one short question)
+One short question that reveals whether the student actually understood the concept.
 
 Do not write more than necessary.
 `;
@@ -142,6 +152,12 @@ STRICT RULES:
 - Teach exactly this lesson only
 - Keep it within ${profile.dailyMinutes || 15} minutes
 
+ADAPTATION RULES:
+- If the student has recorded weaknesses, prioritize clarifying those concepts.
+- If the student struggled with a concept, revisit it using a different explanation or exercise.
+- If the student found lessons easy, slightly increase difficulty or complexity.
+- Use reflection and struggledWith fields to adjust how you teach.
+
 Each lesson MUST:
 - include one concept only
 - include a SunVox task
@@ -149,6 +165,13 @@ Each lesson MUST:
 - include a forced comparison
 
 Keep it practical, minimal, and structured.
+
+QUALITY BAR:
+- The Concept section must be more than a one-line definition.
+- It should usually be 5-10 sentences, unless the concept is extremely simple.
+- The student should be able to understand both the meaning and the practical use of the concept from this lesson alone.
+- If the explanation is too short to teach real understanding, expand it.
+- If the explanation contains fluff or textbook filler, compress it.
 
 If the student has completed all lessons,
 generate a new lesson by slightly increasing difficulty of previous topics.
@@ -167,7 +190,7 @@ generate a new lesson by slightly increasing difficulty of previous topics.
 
     return Response.json({
       lessonId: lesson.id,
-      lessonTitle: lesson.title,
+      lessonTitle: `Lesson ${lesson.order} — ${lesson.topic}`,
       lessonText: completion.choices[0].message.content,
     });
   } catch (error) {
